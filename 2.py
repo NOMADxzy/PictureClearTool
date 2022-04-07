@@ -21,4 +21,5 @@ import os
 
 # from detection.obscure import run_blur_detect
 # print(run_blur_detect('test_blur'))
-
+s = 'fljds'.rsplit('/',1)
+print(s)

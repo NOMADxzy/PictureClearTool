@@ -1,5 +1,5 @@
 from imutils import paths
-import argparse
+import argparse,_thread
 import cv2
 from tools.general import get_img_paths,PathDict
 
@@ -31,13 +31,20 @@ def run_blur_detect(webdir):
     blur_paths.sort(key=lambda x:x[1])
     return blur_paths#webpath格式
 
-for webdir in PathDict:
-    CachedBlurImg += run_blur_detect(webdir)
+def compute_blur(CachedBlurImg):
+    for webdir in PathDict:
+        CachedBlurImg += run_blur_detect(webdir)
+    print("模糊计算完成")
+
+try:
+    _thread.start_new_thread(compute_blur,(CachedBlurImg,))
+except:
+    print("计算模糊图片线程启动失败")
 
 if __name__ == '__main__':
     # 设置参数
-    path = 'pics/'
-    img_paths = get_img_paths('test_blur')
+    path = '../test_blur'
+    img_paths = get_img_paths(paths)
 
     # 遍历每一张图片
     for imagePath in paths.list_images(path):

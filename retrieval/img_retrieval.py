@@ -59,13 +59,13 @@ def cpt_all():
         if(length>1):
             img_list = [{
                 'id':relpath_from_webpath(img_score[0]),
-                'index':i,
+                'index':num+i,
                 'thumbnail': HOST + thumbnail_from_webpath(img_score[0]),
                 'original':HOST + img_score[0],
-                'tags':get_tag(None,img_score[0]),
+                'tags':get_tag(img_score[0]),
                 'checked':not i==0,
                 'score':img_score[1]
             } for i,img_score in enumerate(img_list)]
             purifed_imgs.append(img_list)
-            num+=length-1
-    return {'num_deletable':num,'relative':purifed_imgs}
+            num+=length
+    return {'total':num,'relative':purifed_imgs}

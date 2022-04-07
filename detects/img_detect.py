@@ -5,17 +5,11 @@ import os
 import sys
 from pathlib import Path
 from tools.yolo import pre_single,draw_box
-from tools.general import PathDict,relpath_from_webpath,thumbnail_from_webpath,HOST,get_tag
-from detection.blur_detect import run_blur_detect,CachedBlurImg
+from tools.general import PathDict,relpath_from_webpath,webpath_from_relpath,\
+    thumbnail_from_webpath,HOST,get_tag,names,Tag,get_img_paths,is_screen_shot
+from detects.blur_detect import run_blur_detect,CachedBlurImg
 import cv2
-import torch
-import torch.backends.cudnn as cudnn
-from models.common import DetectMultiBackend
-from utils.datasets import IMG_FORMATS, VID_FORMATS, LoadImages, LoadStreams
-from utils.general import (LOGGER, check_file, check_img_size, check_imshow, colorstr,
-                           increment_path, non_max_suppression, scale_coords)
-from utils.plots import Annotator, colors
-from utils.torch_utils import select_device, time_sync
+
 #目标检测相关的api在这里
 detectapp = Blueprint('img_detect',__name__)
 
@@ -30,15 +24,6 @@ if str(ROOT) not in sys.path:
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 
-names= ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
-        'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
-        'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
-        'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard',
-        'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
-        'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch',
-        'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
-        'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear',
-        'hair drier', 'toothbrush']
 
 @detectapp.route('/',methods=['POST'])
 def detect():
@@ -52,6 +37,25 @@ def detect():
     cv2.imwrite(path,img1)
     return ({'pre_res': pre_res,'box_img':path})
 
+@detectapp.route('/box_img',methods=['POST'])
+def box_img():
+    relpath = request.json['relpath']
+    tag_name = request.json['tag']
+    tag_index = names.index(tag_name)
+    webpath = webpath_from_relpath(relpath)
+
+    tag_boxs = [] #指定tag的boxs
+    if(webpath not in Tag): return {'box_img':''}
+    boxs = Tag[webpath][0]
+    for box in boxs:
+        if(box[0]==tag_index): tag_boxs.append(box)
+
+    img0 = cv2.imread(relpath)
+    img1 = draw_box(img0,tag_boxs)
+    path = 'temp/' + str(time.time()) + '_' + relpath.rsplit('/', 1)[1]  # 放临时文件夹下
+    cv2.imwrite(path, img1)
+    return ({'box_img': HOST+path})
+
 @detectapp.route('/blur_detect',methods=['GET'])
 def blur_detect():
     blur_imgs,num = [],0
@@ -63,9 +67,10 @@ def blur_detect():
                  'thumbnail': HOST + thumbnail_from_webpath(webpath),
                  'original':HOST + webpath,
                  # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
-                 'tags': get_tag(None,webpath),
+                 'tags': get_tag(webpath),
                  'ft':ft
             }
+            num+=1
             blur_imgs.append(img)
     else:
         for webdir in PathDict:
@@ -77,12 +82,54 @@ def blur_detect():
                      'thumbnail': HOST + thumbnail_from_webpath(webpath),
                      'original':HOST + webpath,
                      # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
-                     'tags': get_tag(None,webpath),
+                     'tags': get_tag(webpath),
                      'ft':ft
                 }
+                num+=1
                 blur_imgs.append(img)
-    return {'blur_imgs':blur_imgs}
+    return {'imgs':blur_imgs}
 
+@detectapp.route('/screenshot',methods=['GET'])
+def screenshot():
+    imgs,num = [],0
+    for webdir in PathDict:
+        reldir = PathDict[webdir]
+        relpaths = get_img_paths(reldir)
+        for relpath in relpaths:
+            file = relpath.rsplit('/',1)[1]
+            if(is_screen_shot(file)):
+                img = {
+                    'id': relpath,
+                    'index': num,
+                    'thumbnail': HOST + '/'+webdir+'/.thumbnail/'+file,
+                    'original': HOST + '/'+webdir+'/'+file,
+                    'tags': get_tag(webdir+'/'+file),
+                }
+                imgs.append(img)
+                num += 1
+    return {'imgs':imgs}
+
+@detectapp.route('/size_sort',methods=['GET'])
+def size_sort():
+    imgs, num = [], 0
+    for webdir in PathDict:
+        reldir = PathDict[webdir]
+        relpaths = get_img_paths(reldir)
+        for relpath in relpaths:
+            file = relpath.rsplit('/', 1)[1]
+            size = os.path.getsize(relpath)
+            img = {
+                'id': relpath,
+                'index': num,
+                'thumbnail': HOST + '/' + webdir + '/.thumbnail/' + file,
+                'original': HOST + '/' + webdir + '/' + file,
+                'tags': get_tag(webdir + '/' + file),
+                'size':size
+            }
+            imgs.append(img)
+            num += 1
+    imgs.sort(key=lambda x:x['size'],reverse=True)
+    return {'imgs':imgs}
 # #加载模型
 # device = select_device('')
 # model = DetectMultiBackend('weights/final.pt', device=device, dnn=False, data='data/coco128.yaml', fp16=False)
