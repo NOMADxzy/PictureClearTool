@@ -1,8 +1,10 @@
 import os
 from PIL import Image
-import pickle,sqlite3
+import pickle,sqlite3,re
+import time
 
-PathDict = {'pics':'pics','Desktop':'..','test_blur':'test_blur'}
+PathDict = {'pics':'pics','Desktop':'..','test_blur':'test_blur','person':'person','foods':'../../Pictures/foods'}
+
 HOST = 'http://localhost:5000/'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg','webp'}#判断格式正确
 names= ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
@@ -15,15 +17,20 @@ names= ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 't
         'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear',
         'hair drier', 'toothbrush']
 Tag,TagGroup = {},{}
+#Tag:{webpath:[boxs,tags]...}
+#TagGroup:{tag:[webpath1,webpath2...],[...]...}
 def is_allowed_ext(s):
     return '.' in s and s.rsplit('.',1)[1] in ALLOWED_EXTENSIONS
 
-def is_screen_shot(file):
-    return file[0:10].lower()=='screenshot'
+def is_screen_shot(relpath):
+    file = relpath.rsplit('/',1)[1]
+    details = get_img_detail(relpath)
+    general_resolution = [(1080,1920),(720,1280),(1080,2400)]
+    return file[0:10].lower()=='screenshot' or details[2] in general_resolution
 
-def get_img_paths(path):
+def get_img_paths(dir):#由relpdir获取relpaths
     imglist = []
-    for root, dirs, files in os.walk(path):
+    for root, dirs, files in os.walk(dir):
         dirs[:] = []
         for file in files:
             if (not is_allowed_ext(file)): continue
@@ -69,6 +76,26 @@ def thumbnail_from_webpath(webpath):
 
 def get_tag(webpath):
     return list(Tag[webpath][1]) if(webpath in Tag) else []
+
+def webpath_belongto_dir(webpath,dir):
+    return webpath[0:len(dir)] == dir
+
+def get_img_detail(relpath):
+    import time
+    img = Image.open(relpath)
+    info = img._getexif()
+    size = os.path.getsize(relpath)
+
+    if info is None or 306 not in info:
+        time = time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(os.stat(relpath).st_mtime))
+        date_and_time = time.split(' ')  # 只要日期
+        return [size,date_and_time[0],img.size,date_and_time[1]]
+    else:
+        time = info[306]
+        date_and_time = time.split(' ')#日期和时间分开
+
+    return [size,date_and_time[0], img.size,date_and_time[1]]
+
     # inside_sql = False#方法内部连接数据库
     # if(cursor==None):
     #     inside_sql = True

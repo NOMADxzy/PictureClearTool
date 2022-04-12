@@ -1,0 +1,160 @@
+# -*- coding: UTF-8 -*-
+import copy,_thread
+from PIL import Image
+import dlib
+import face_recognition
+import numpy as np
+from datetime import datetime
+import os,pickle,sqlite3
+import shutil
+from tools.general import get_img_paths,PathDict,TagGroup,relpath_from_webpath
+import numpy as np
+
+known_face_names,known_face_imgs,known_face_encodings,mislead = [],[],[],[]#已提取的人脸数据
+cached,avatars = [],[]
+face_zip_path = 'detects/faces_zip.pkl'
+
+if(os.path.exists(face_zip_path)):#存在则读取上次的结果
+    with open(face_zip_path,'rb') as file:
+        try:
+            face_zip = pickle.load(file)
+            known_face_names, known_face_encodings, known_face_imgs,mislead = face_zip
+        except:
+            print('(face) 文件错误')
+        finally: file.close()
+
+def purify():
+    known_face_names_c = copy.deepcopy(known_face_names)
+    known_face_imgs_c = copy.deepcopy(known_face_imgs)
+    for i,name in enumerate(known_face_names_c):
+        imgs_c = known_face_imgs_c[i]#某一人物的所有照片
+        imgs = known_face_imgs[i]
+
+        for j,face in enumerate(imgs_c):
+            if (not os.path.exists(relpath_from_webpath(face[0]))):
+                imgs.pop(j)
+            else: cached.append(face[0])#已检测过的图片
+        if len(imgs)==0:#该人物已经清空
+            known_face_names.pop(i)
+            known_face_imgs.pop(i)
+            known_face_encodings.pop(i)
+    for webpath in mislead:#mislead中去除不存在的照片
+        if(not os.path.exists(webpath)):
+            mislead.remove(webpath)
+    with open(face_zip_path, 'wb') as file:
+        faces_zip = [known_face_names, known_face_encodings,known_face_imgs]
+        pickle.dump(faces_zip, file)
+        file.close()
+
+
+# 获得所有带person标签的文件
+def get_paths():
+    detect = sqlite3.connect("detect_results.db")
+    cursor = detect.cursor()
+    cursor.execute("""select * from tagclassified where tag = ?""", (0,))
+    t, imgs_dump = cursor.fetchone()
+    webpaths = pickle.loads(imgs_dump)
+    detect.close()
+    return webpaths
+
+
+def find(webpaths):
+    # 测试起始时间
+    t1 = datetime.now()
+    t10 = t1 - t1
+    t20 = t10
+    t30 = t10
+    t40 = t10
+    t50 = t10
+    count_checked, count_copied = 0, 0
+    for webpath in webpaths:
+        if(webpath in cached or webpath in mislead): continue #已检测过的照片/不含人脸的照片
+        image_path = relpath_from_webpath(webpath)
+        # 加载图片
+        t00 = datetime.now()
+        unknown_image = face_recognition.load_image_file(image_path)
+        t10 += datetime.now() - t00
+        count_checked += 1
+
+        # 找到图中所有人脸的位置
+        t00 = datetime.now()
+        face_locations = face_recognition.face_locations(unknown_image)
+        if(len(face_locations)==0): mislead.append(webpath)
+        # face_locations = face_recognition.face_locations(unknown_image, number_of_times_to_upsample=0, model="cnn")
+        t20 += datetime.now() - t00
+
+        # 根据位置加载人脸编码的列表
+        t00 = datetime.now()
+        face_encodings = face_recognition.face_encodings(unknown_image, face_locations)
+        t30 += datetime.now() - t00
+
+        # 遍历所有人脸编码，与已知人脸对比
+        for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
+            # 获得对比结果，tolerance值越低比对越严格
+            if (len(known_face_encodings) == 0):  # 还没有任何人脸数据
+                name = '未命名'
+                known_face_names.append(name)
+                known_face_encodings.append(face_encoding)
+                known_face_imgs.append([(webpath, [left, top, right, bottom])])
+                continue
+            t00 = datetime.now()
+            matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance=0.55)
+            t40 += datetime.now() - t00
+
+            # 匹配到人脸
+            if True in matches:
+                ids = np.argwhere(matches)
+                for id in ids:
+                    id = id[0]
+                    name = known_face_names[id]
+                    print("(face) matched "+image_path + " : " + name)
+                    known_face_imgs[id].append((webpath, [left, top, right, bottom]))
+            else:  # 不和当前已有人脸匹配
+                name = '未命名 '
+                print('(face) find new person : '+webpath)
+                known_face_names.append(name)
+                known_face_encodings.append(face_encoding)
+                known_face_imgs.append([(webpath, [left, top, right, bottom])])
+
+    with open(face_zip_path, 'wb') as file:
+        faces_zip = [known_face_names, known_face_encodings,known_face_imgs,mislead]
+        pickle.dump(faces_zip, file)
+        file.close()
+
+        # 测试结束时间
+        t2 = datetime.now()
+        # 显示总的时间开销
+        print('%d pictures checked, and %d pictures copied with known faces.' % (count_checked, count_copied))
+        print('time spend: %d seconds, %d microseconds.' % ((t2 - t1).seconds, (t2 - t1).microseconds))
+        print('load_image_file time: %d seconds, %d microseconds.' % (t10.seconds, t10.microseconds))
+        print('face_locations  time: %d seconds, %d microseconds.' % (t20.seconds, t20.microseconds))
+        print('face_encodings  time: %d seconds, %d microseconds.' % (t30.seconds, t30.microseconds))
+        print('compare_faces   time: %d seconds, %d microseconds.' % (t40.seconds, t40.microseconds))
+        print('shutil.copy     time: %d seconds, %d microseconds.' % (t50.seconds, t50.microseconds))
+
+def generate_avatar():
+    for i,group in enumerate(known_face_imgs):
+        webpath,pos = group[0]
+        avatar = Image.open(relpath_from_webpath(webpath))
+        avatar = avatar.crop(pos)
+        try:
+            name = '未命名'+str(i) if known_face_names[i] == '未命名' else known_face_names[i]
+            avatar_path = 'temp/avatar/'  +  name+ '.jpg'
+            avatar.save(avatar_path)
+            avatars.append(avatar_path)
+        except:
+            print('(face)保存' + known_face_names[i] + '头像失败')
+    print("(face) generated person avatar")
+
+
+def run():
+    purify()  # 删除不存在的路径
+    find(get_paths())  # 匹配所有新增的人脸照片
+    generate_avatar()
+
+    print('face process stand by')
+try:
+    _thread.start_new_thread(run,())
+except:
+    print("人物线程启动失败")
+

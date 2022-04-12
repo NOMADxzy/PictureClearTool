@@ -1,7 +1,7 @@
 from flask import Flask, request, make_response
 from pathlib import Path
 from tools.general import is_allowed_ext,get_thumbnail_pic,get_tag,\
-    HOST,PathDict,TagGroup,Tag,names,webpath_from_relpath
+    HOST,PathDict,TagGroup,Tag,names,webpath_from_relpath,get_img_detail
 
 import os,pickle,sqlite3
 from flask_cors import CORS
@@ -18,15 +18,19 @@ app.register_blueprint(detectapp,url_prefix='/detect')
 
 
 #获取、查看、删除图片等基本接口在这里
+@app.route('/',methods=['GET'])
+def hello():
+    print(request.args)
+    return 'image tool backend'
 
 #获取指定文件夹下的图片
 @app.route('/get_pics/<path:webdir>',methods=['GET'])
 def get_pics(webdir,baseindex=0):
-    if not webdir in PathDict:
-        print('dir not exist')
+    if not webdir in PathDict or not os.path.isdir(PathDict[webdir]):
+        print(webdir+'(get_pics) dir not exist')
         return {'total':0,'imgs':[]}
     root = PathDict[webdir]
-    baseindex#用于get_all_pics的index矫正
+    # baseindex#用于get_all_pics的index矫正
 
     detect = sqlite3.connect("detect_results.db")#连接数据库
     cursor = detect.cursor()
@@ -44,6 +48,7 @@ def get_pics(webdir,baseindex=0):
                    'index':num+baseindex,
                    'thumbnail':HOST + webdir + '/.thumbnail/' + file,
                    'original':HOST+webdir+'/'+file,
+                   'details':get_img_detail(root+'/'+file),
                    # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
                    'tags':tag}
             hits.append(img)
@@ -68,6 +73,7 @@ def show_photo(dir,file):
     if not file is None:
         if  dir in PathDict or dir == 'temp':
             if dir=='temp': root='temp'
+            elif dir=='temp/avatar': root='temp/avatar'
             else: root = PathDict[dir]
             image_data = open(f'{root}/{file}', "rb").read()
             response = make_response(image_data)
@@ -77,41 +83,6 @@ def show_photo(dir,file):
             print('file not exist')
             return 'none', 200
 
-@app.route('/search/<path:tag_name>',methods=['GET'])
-def search(tag_name):
-    print(tag_name)
-    if(tag_name==''): return get_all_pics() #返回所有图片
-    # detect = sqlite3.connect("detect_results.db")
-    # cursor = detect.cursor()
-    # if(not tag_name in names):#没有该标签
-    #     return {'imgs':[]}
-    # tag = names.index(tag_name)
-    # cursor.execute("""select * from tagclassified where tag = ?""",(tag,))
-    # result = cursor.fetchone()
-    # if(result==None):#没有记录
-    #     return {'imgs':[]}
-    # t,imgs_dump = result
-    # imgs = pickle.loads(imgs_dump)
-    imgs = TagGroup[names.index(tag_name)]
-
-    imgs_pack = []
-    num = 0
-    for img in imgs:
-        img_splited = img.rsplit('/',1)
-        root = PathDict[img_splited[0]]
-        #移除失效路径
-        if (img_splited[0] not in PathDict or not os.path.exists(
-            root+ '/' + img_splited[1])): imgs.remove(img)
-
-        thumb_img = img_splited[0]+'/.thumbnail/'+img_splited[1]
-        im = {'id': root+'/'+img_splited[1],
-              'index': num,
-              'thumbnail': HOST + thumb_img,
-              'original': HOST + img,
-              'tags': get_tag(img)}
-        imgs_pack.append(im)
-        num+=1
-    return {'total':num,'imgs':imgs_pack}
 
 @app.route('/delete',methods=['POST'])
 def delete():

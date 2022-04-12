@@ -1,14 +1,17 @@
 import time
-
-from flask import Blueprint,request
+from PIL import Image, ImageDraw
+import numpy as np
+from flask import Blueprint,request,redirect
 import os
 import sys
 from pathlib import Path
 from tools.yolo import pre_single,draw_box
 from tools.general import PathDict,relpath_from_webpath,webpath_from_relpath,\
-    thumbnail_from_webpath,HOST,get_tag,names,Tag,get_img_paths,is_screen_shot
-from detects.blur_detect import run_blur_detect,CachedBlurImg
+    thumbnail_from_webpath,HOST,get_tag,names,Tag,get_img_paths,is_screen_shot,webpath_belongto_dir,\
+    TagGroup,get_img_detail
+from detects.blur import run_blur_detect,CachedBlurImg
 import cv2
+from detects.face import known_face_names,known_face_imgs,avatars
 
 #目标检测相关的api在这里
 detectapp = Blueprint('img_detect',__name__)
@@ -37,6 +40,46 @@ def detect():
     cv2.imwrite(path,img1)
     return ({'pre_res': pre_res,'box_img':path})
 
+@detectapp.route('/search/',methods=['GET'])
+def redirect_to_all():
+    print('redirect')
+    return redirect('/get_all_pics')
+
+@detectapp.route('/search/<path:tag_name>',methods=['GET'])
+def search(tag_name):
+    filt = False  # 按文件夹过滤
+    if('dir' in request.args):
+        dir = request.args['dir']
+        if (dir in PathDict):
+            filt = True
+
+    print('searchtag '+tag_name)
+    if(filt): print('searchdir: '+ dir)
+    if(tag_name==''): return redirect('/get_all_pics') #返回所有图片
+    imgs = TagGroup[names.index(tag_name)]
+
+    imgs_pack = []
+    num = 0
+    for img in imgs:
+        img_splited = img.rsplit('/',1)
+        root = PathDict[img_splited[0]]
+        #移除失效路径
+        if (img_splited[0] not in PathDict or not os.path.exists(
+            root+ '/' + img_splited[1])): imgs.remove(img)
+        if(filt and not img_splited[0]==dir):
+            continue
+
+        thumb_img = img_splited[0]+'/.thumbnail/'+img_splited[1]
+        im = {'id': root+'/'+img_splited[1],
+              'index': num,
+              'thumbnail': HOST + thumb_img,
+              'original': HOST + img,
+              'details': get_img_detail(root + '/' + img_splited[1]),
+              'tags': get_tag(img)}
+        imgs_pack.append(im)
+        num+=1
+    return {'total':num,'imgs':imgs_pack}
+
 @detectapp.route('/box_img',methods=['POST'])
 def box_img():
     relpath = request.json['relpath']
@@ -56,16 +99,85 @@ def box_img():
     cv2.imwrite(path, img1)
     return ({'box_img': HOST+path})
 
-@detectapp.route('/blur_detect',methods=['GET'])
-def blur_detect():
+@detectapp.route('/thing',methods=['GET'])
+def thing():
+    thres = 5
+    imgs, num =  [], 0
+    g_sizes = [len(TagGroup[tagid]) for tagid in TagGroup]
+    sortidxs = np.argsort(np.asarray(g_sizes))
+    for iid in range(len(names)):
+        id = sortidxs[len(names)-1-iid]
+        if(id==0): continue#跳过人物
+        if(g_sizes[id]<thres): break
+        ims = []
+        for i,webpath in enumerate(TagGroup[id]):
+            relpath = relpath_from_webpath(webpath)
+            im = {'id': relpath,
+                  'index': num+i,
+                  'thumbnail': HOST + thumbnail_from_webpath(webpath),
+                  'original': HOST + webpath,
+                  'name': names[id],
+                  'avatar':HOST+thumbnail_from_webpath(webpath),
+                  'details': get_img_detail(relpath),
+                  'tags': get_tag(webpath)}
+            ims.append(im)
+        num += len(ims)
+        imgs.append(ims)
+
+    return {'imgs':imgs}
+
+@detectapp.route('/face',methods=['GET'])
+def face():
+    personnames,imgs,num = [],[],0
+    for i in range(len(known_face_names)):
+        personname = known_face_names[i]
+        group = []
+        for j,im in enumerate(known_face_imgs[i]):
+            webpath,pos = im
+            # #生成头像
+            # if(j==0):
+            #     avatar = Image.open(relpath_from_webpath(webpath))
+            #     avatar = avatar.crop(pos)
+            #     try:
+            #         avatar_path = 'temp/' +str(time.time())+'_'+ personname+'.jpg'
+            #         avatar.save(avatar_path)
+            #     except:
+            #         print('保存' + personname + '头像失败')
+            relpath = relpath_from_webpath(webpath)
+            img = {
+                'id': relpath,
+                'index': num+j,
+                'thumbnail': HOST + thumbnail_from_webpath(webpath),
+                'original': HOST + webpath,
+                # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
+                'tags': get_tag(webpath),
+                'name':personname,
+                'details': get_img_detail(relpath),
+                'avatar':HOST+avatars[i]
+            }
+            group.append(img)
+        imgs.append(group)
+        personnames.append(personname)
+        num += len(group)
+    return {'names':personnames,'imgs':imgs}
+
+@detectapp.route('/blur_detect/<path:dir>',methods=['GET'])
+def blur_detect(dir):
+    filt = True
+    if(dir=='__all__'):
+        filt = False
     blur_imgs,num = [],0
     if(not CachedBlurImg==[]):
         for webpath,ft in CachedBlurImg:
+            if filt and not webpath_belongto_dir(webpath,dir): continue#按文件夹过滤
+            relpath = relpath_from_webpath(webpath)
+            if(not os.path.exists(relpath)): continue
             img = {
-                 'id': relpath_from_webpath(webpath),
+                 'id': relpath,
                  'index': num,
                  'thumbnail': HOST + thumbnail_from_webpath(webpath),
                  'original':HOST + webpath,
+                'details': get_img_detail(relpath),
                  # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
                  'tags': get_tag(webpath),
                  'ft':ft
@@ -76,43 +188,53 @@ def blur_detect():
         for webdir in PathDict:
             blur_webpaths = run_blur_detect(webdir)
             for webpath,ft in blur_webpaths:
+                if filt and not webpath_belongto_dir(webpath, dir): continue  # 按文件夹过滤
+                relpath = relpath_from_webpath(webpath)
                 img = {
-                     'id': relpath_from_webpath(webpath),
+                     'id': relpath,
                      'index': num,
                      'thumbnail': HOST + thumbnail_from_webpath(webpath),
                      'original':HOST + webpath,
                      # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
                      'tags': get_tag(webpath),
+                     'details': get_img_detail(relpath),
                      'ft':ft
                 }
                 num+=1
                 blur_imgs.append(img)
     return {'imgs':blur_imgs}
 
-@detectapp.route('/screenshot',methods=['GET'])
-def screenshot():
+@detectapp.route('/screenshot/<path:dir>',methods=['GET'])
+def screenshot(dir):
+    dirs = [dir]
+    if (dir == '__all__'):
+        dirs = PathDict
     imgs,num = [],0
-    for webdir in PathDict:
+    for webdir in dirs:
         reldir = PathDict[webdir]
         relpaths = get_img_paths(reldir)
         for relpath in relpaths:
             file = relpath.rsplit('/',1)[1]
-            if(is_screen_shot(file)):
+            if(is_screen_shot(relpath)):
                 img = {
                     'id': relpath,
                     'index': num,
                     'thumbnail': HOST + '/'+webdir+'/.thumbnail/'+file,
                     'original': HOST + '/'+webdir+'/'+file,
                     'tags': get_tag(webdir+'/'+file),
+                    'details': get_img_detail(relpath),
                 }
                 imgs.append(img)
                 num += 1
     return {'imgs':imgs}
 
-@detectapp.route('/size_sort',methods=['GET'])
-def size_sort():
+@detectapp.route('/fat/<path:dir>',methods=['GET'])
+def fat(dir):
+    dirs = [dir]
+    if (dir == '__all__'):
+        dirs = PathDict
     imgs, num = [], 0
-    for webdir in PathDict:
+    for webdir in dirs:
         reldir = PathDict[webdir]
         relpaths = get_img_paths(reldir)
         for relpath in relpaths:
@@ -124,12 +246,32 @@ def size_sort():
                 'thumbnail': HOST + '/' + webdir + '/.thumbnail/' + file,
                 'original': HOST + '/' + webdir + '/' + file,
                 'tags': get_tag(webdir + '/' + file),
-                'size':size
+                'size':size,
+                'details': get_img_detail(relpath),
             }
             imgs.append(img)
             num += 1
     imgs.sort(key=lambda x:x['size'],reverse=True)
     return {'imgs':imgs}
+
+@detectapp.route('/bLur_screen_fat/__all__',methods=['GET'])
+def bLur_screen_fat_all():
+    blurs, screens, fats = [], [], []
+    for dir in PathDict:
+        blurs += blur_detect(dir)['imgs']
+        screens += screenshot(dir)['imgs']
+        fats += fat(dir)['imgs']
+    return {'blurs':blurs[:10],'screenshots':screens,'fats':fats[:10]}
+
+@detectapp.route('/bLur_screen_fat/<path:dir>',methods=['GET'])
+def bLur_screen_fat(dir):
+    blurs,screens,fats = [],[],[]
+    blurs = blur_detect(dir)['imgs']
+    screens = screenshot(dir)['imgs']
+    fats = fat(dir)['imgs']
+    return {'blurs':blurs,'screenshots':screens,'fats':fats[:10]}
+
+
 # #加载模型
 # device = select_device('')
 # model = DetectMultiBackend('weights/final.pt', device=device, dnn=False, data='data/coco128.yaml', fp16=False)

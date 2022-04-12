@@ -30,16 +30,16 @@ for tag in range(len(names)):#读取tagclassified表
         rewrite = False
         for img in imgs:
             if(not (relpath_from_webpath(img)and os.path.exists(relpath_from_webpath(img)) and img.split('/')[0] in PathDict)):
-                print(img+' can not find (Tag Group)')
+                print('yolo '+img+' can not find (Tag Group)')
                 imgs.remove(img)
                 rewrite = True
         #图片组发生改变则重写
         if(rewrite):
-            print('rewrite tag group '+names[tag])
+            print('(yolo)rewrite tag group '+names[tag])
             cursor.execute("""update tagclassified set imgs = ? where tag = ?;""", (pickle.dumps(imgs), tag))
         TagGroup[tag] = imgs#读取到内存中使用
 t2 = time.process_time()
-print("load and check tag group, done spent time: "+str(t2-t1))
+print("(yolo)load and check tag group, done spent time: "+str(t2-t1))
 #加载box检测结果（Tag）
 cursor.execute("""select * from Tag""")
 result = cursor.fetchall()
@@ -48,16 +48,16 @@ if(not result==None):#有数据
     for r in result:
         webpath,box_dump,tag_dump = r
         if (not (relpath_from_webpath(webpath) and os.path.exists(relpath_from_webpath(webpath)) and webpath.split('/')[0] in PathDict)):
-            print(webpath + ' can not find (Tag)')
+            print(webpath + '(yolo) can not find (Tag)')
             rewrite = True
             del_list.append(webpath)
         else:Tag[webpath] = (pickle.loads(box_dump),pickle.loads(tag_dump))
     if(rewrite):
         cursor.execute("delete from Tag where path in (" + str(del_list)[1:-1] + ")")
-        print('rewrite tag delete' + str(del_list))
+        print('(yolo) rewrite tag delete' + str(del_list))
 
 t3 = time.process_time()
-print("load and check Tag, done spent time: "+str(t3-t2))
+print("(yolo)load and check Tag, done spent time: "+str(t3-t2))
 detect.commit()
 detect.close()
 
@@ -158,6 +158,9 @@ def draw_box(img, boxs):
 
 
 def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分类，写入数据库
+    if(not os.path.isdir(PathDict[web_dir])):
+        print('(yolo) ' + webdir + ' 文件夹不存在')
+        return 0
     cluster = {}
     detect = sqlite3.connect("detect_results.db")
     cursor = detect.cursor()
@@ -171,7 +174,7 @@ def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分
             rel_path = root + '/' + file
             if(web_path in Tag): continue#有就不预测了
             total += 1
-            print('detecting tag from '+web_path)
+            print('(yolo) detecting tag from '+web_path)
             boxs = pre_single(source=rel_path)
             for box in boxs:
                 cls = int(box[0])
@@ -180,6 +183,7 @@ def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分
                 else:
                     cluster[cls] = [web_path]
             tags = [names[int(box[0])] for box in boxs]
+            Tag[web_path] = [(boxs,tags)]
             tags_dump = pickle.dumps(list(set(tags)))
             boxs_dump = pickle.dumps(boxs)
             cursor.execute("""select * from Tag where path=(?)""", (web_path,))
@@ -193,14 +197,14 @@ def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分
         res = cursor.fetchone()
         if (res == None):
             imgs_dump = pickle.dumps(list(set(cluster[cls])))
-            print('creating tag group' + names[cls] + ' add' + str(cluster[cls]))
+            print('(yolo) creating tag group' + names[cls] + ' add' + str(cluster[cls]))
             cursor.execute("""insert into tagclassified values (?,?)""", (cls, imgs_dump))
             TagGroup[cls] = list(set(cluster[cls]))
         else:
             cls, img0s_dump = res
             img0s = pickle.loads(img0s_dump)
             img1s_dump = pickle.dumps(list(set(img0s + cluster[cls])))
-            print('updating tag group '+names[cls]+' add'+str(cluster[cls]))
+            print('(yolo) updating tag group '+names[cls]+' add'+str(cluster[cls]))
             cursor.execute("""update tagclassified set imgs = ? where tag = ?;""", (img1s_dump, cls))
             TagGroup[cls] = list(set(img0s + cluster[cls]))
 
@@ -213,7 +217,7 @@ new_num = 0
 for webdir in PathDict:
     new_num += pre_dir(webdir)
 t4 = time.process_time()
-print("check and detect new images,"+str(new_num)+" done spent time: "+str(t4-t3))
+print("(yolo)check and detect new images,"+str(new_num)+" done spent time: "+str(t4-t3))
 
 
 

@@ -41,7 +41,7 @@ def purify_feature():
     for i, webpath in enumerate(names):
         relpath = relpath_from_webpath(webpath)
         if (not (relpath and os.path.exists(relpath) and webpath.split('/')[0] in PathDict)):
-            print('remove ' + webpath)
+            print('(retrieval) remove ' + webpath)
             names.remove(webpath)
             feats.remove(feats[i])
     # 存入文件
@@ -51,13 +51,12 @@ def purify_feature():
     h5f.close()
 
 
-try:
-    _thread.start_new_thread(purify_feature,())
-except:
-    print("净化图片特征线程启动失败")
+
 
 def index_dir(webdir):
     relpath = PathDict[webdir]
+    if(not os.path.isdir(relpath)):
+        print('(retrieval) '+webdir+' 文件夹不存在')
 
     model = VGGNet()
     img_list = get_imlist(relpath)
@@ -67,19 +66,23 @@ def index_dir(webdir):
         norm_feat = model.extract_feat(img_path)
         feats.append(norm_feat)
         names.append(img_name)
-        print("extracting feature from image No. %d ,"+img_name+"; " + str(i + 1))
+        print("(retrieval) extracting feature from image No. %d ,"+img_name+"; " + str(i + 1))
 
     h5f = h5py.File('retrieval/feature.h5', 'w')  # 存入文件
     h5f.create_dataset('feats', data=np.array(feats))
     h5f.create_dataset('names', data=names)
     h5f.close()
 
-#检查新增图片并提取特证
-t1 = time.process_time()
-for webdir in PathDict:
-    index_dir(webdir)
-t2 = time.process_time()
-print("index new images, done spent time: "+str(t2-t1))
+try:
+    _thread.start_new_thread(purify_feature,())
+    # 检查新增图片并提取特证
+    t1 = time.process_time()
+    for webdir in PathDict:
+        index_dir(webdir)
+    t2 = time.process_time()
+    print("(retrieval) index new images, done spent time: " + str(t2 - t1))
+except:
+    print("检索线程启动失败")
 
 if __name__ == "__main__":
 
