@@ -153,8 +153,10 @@ def del_dir():
         file.close()
     return 'done',200
 
-@app.route('/setting', methods=['POST'])
+@app.route('/setting', methods=['POST','GET'])
 def setting():
+    if request.method=='GET':
+        return settings
     print(request.json)
     type = request.json['type']
     val = request.json['val']
