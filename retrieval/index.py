@@ -10,7 +10,7 @@ import numpy as np
 import argparse
 
 from retrieval.extract_cnn_vgg16_keras import VGGNet
-from tools.general import relpath_from_webpath, PathDict, is_allowed_ext
+from tools.general import relpath_from_webpath, PathDict, is_allowed_ext, executor
 import ssl
 
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -21,7 +21,6 @@ feats = h5_file['feats'][:].tolist()
 names = h5_file['names'][:]
 names = [e.decode() for e in names]
 h5_file.close()
-
 
 '''
  Returns a list of filenames for all jpg images in a directory. 
@@ -51,12 +50,10 @@ def purify_feature():
     h5f.close()
 
 
-
-
 def index_dir(webdir):
     relpath = PathDict[webdir]
-    if(not os.path.isdir(relpath)):
-        print('(retrieval) '+webdir+' 文件夹不存在')
+    if (not os.path.isdir(relpath)):
+        print('(retrieval) ' + webdir + ' 文件夹不存在')
 
     model = VGGNet()
     img_list = get_imlist(relpath)
@@ -66,23 +63,25 @@ def index_dir(webdir):
         norm_feat = model.extract_feat(img_path)
         feats.append(norm_feat)
         names.append(img_name)
-        print("(retrieval) extracting feature from image No. %d ,"+img_name+"; " + str(i + 1))
+        print("(retrieval) extracting feature from image No. %d ," + img_name + "; " + str(i + 1))
 
     h5f = h5py.File('retrieval/feature.h5', 'w')  # 存入文件
     h5f.create_dataset('feats', data=np.array(feats))
     h5f.create_dataset('names', data=names)
     h5f.close()
 
-try:
-    _thread.start_new_thread(purify_feature,())
+
+def run():
+    purify_feature()
     # 检查新增图片并提取特证
     t1 = time.process_time()
     for webdir in PathDict:
         index_dir(webdir)
     t2 = time.process_time()
     print("(retrieval) index new images, done spent time: " + str(t2 - t1))
-except:
-    print("检索线程启动失败")
+
+
+executor.submit(run)
 
 if __name__ == "__main__":
 

@@ -77,7 +77,7 @@ model = DetectMultiBackend('weights/yolov5m.pt', device=device, dnn=False, data=
 @torch.no_grad()
 def pre_single(
         source='data/temp/bus.jpg',  # file/dir/URL/glob, 0 for webcam
-        imgsz=(1280, 1280),  # inference size (height, width)
+        imgsz=(640, 640),  # inference size (height, width)
         conf_thres=0.25,  # confidence threshold
         iou_thres=0.45,  # NMS IOU threshold
         max_det=1000,  # maximum detections per image

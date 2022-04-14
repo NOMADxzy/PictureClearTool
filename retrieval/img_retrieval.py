@@ -2,9 +2,9 @@ from flask import Blueprint,request
 
 from retrieval.extract_cnn_vgg16_keras import VGGNet
 from tools.general import relpath_from_webpath,thumbnail_from_webpath,get_tag,HOST,webpath_belongto_dir,\
-    get_thumbnail_pic,get_img_detail
+    get_thumbnail_pic,get_img_detail,executor,settings
 import numpy as np
-from retrieval.index import names,feats
+from retrieval.index import names,feats,index_dir
 import h5py
 import os
 import json
@@ -21,7 +21,8 @@ model = VGGNet()
 def retrieval():
     max_res = 8
     min_res = 2
-    threshold = 0.75
+    threshold = settings['rela']
+    print('img retrieval thres = ' + str(threshold))
     query = request.json['query']#目标图片的相对路径
     print('query img '+query)
     qvec = model.extract_feat(query)

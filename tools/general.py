@@ -2,12 +2,20 @@ import os
 from PIL import Image
 import pickle,sqlite3,re
 import time
+from concurrent.futures import ThreadPoolExecutor
+executor = ThreadPoolExecutor()
 
-PathDict = {'pics':'pics','Desktop':'..','test_blur':'test_blur','person':'person','foods':'../../Pictures/foods'}
-with open('PathDict.pkl','rb') as file:
-    PathDict = pickle.load(file)
-    file.close()
-PathDict['pics'] = 'pics'
+settings = {'blur':70,'face':0.5,'rela':0.75}
+if(os.path.exists('setting.cfg')):
+    with open('setting.cfg', 'rb') as file:
+        settings = pickle.load(file)
+        file.close()
+
+PathDict = {'pics':'pics','Desktop':'..','foods':'../../Pictures/foods'}
+if(os.path.exists('PathDict.pkl')):
+    with open('PathDict.pkl','rb') as file:
+        PathDict = pickle.load(file)
+        file.close()
 HOST = 'http://localhost:5000/'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg','webp'}#判断格式正确
 names= ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
@@ -102,6 +110,8 @@ def get_img_detail(relpath):
     else:
         time = info[306]
         date_and_time = time.split(' ')#日期和时间分开
+
+    # resolution = str(img.size[0]) + 'x' + str(img.size[1])
 
     return [size,date_and_time[0], img.size,date_and_time[1]]
 

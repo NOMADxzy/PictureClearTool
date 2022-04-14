@@ -1,7 +1,7 @@
 from imutils import paths
 import argparse,_thread
 import cv2,pickle,os
-from tools.general import get_img_paths,PathDict,webpath_from_relpath
+from tools.general import get_img_paths,PathDict,webpath_from_relpath,settings
 
 blur_zip_path = 'detects/blurs_zip.pkl'
 relpaths,fms,CachedBlurImg = [],[],[]
@@ -29,7 +29,7 @@ def purify():
 def conpute_laplace(image):
     return cv2.Laplacian(image, cv2.CV_64F).var()
 
-def run_blur_detect(webdir ,thres = 70):
+def run_blur_detect(webdir ,thres = settings['blur']):
     updated = 0
     reldir = PathDict[webdir]
     if(not os.path.isdir(reldir)):
@@ -61,6 +61,7 @@ def run_blur_detect(webdir ,thres = 70):
 
 def compute_blur():
     updated = 0
+    print('blur detect thres = ' + str(settings['blur']))
     for webdir in PathDict:
         updated += run_blur_detect(webdir)
     if(updated>0) :

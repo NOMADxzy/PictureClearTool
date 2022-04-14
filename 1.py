@@ -17,5 +17,4 @@ import os,time
 # print(get_img_detail(relpath))
 # print(is_screen_shot(relpath))
 
-print(os.path.exsits(False))
 

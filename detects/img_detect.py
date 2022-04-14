@@ -9,10 +9,11 @@ from pathlib import Path
 from tools.yolo import pre_single,draw_box,pre_dir
 from tools.general import PathDict,relpath_from_webpath,webpath_from_relpath,\
     thumbnail_from_webpath,HOST,get_tag,names,Tag,get_img_paths,is_screen_shot,webpath_belongto_dir,\
-    TagGroup,get_img_detail,is_allowed_ext
+    TagGroup,get_img_detail,is_allowed_ext,executor
 from detects.blur import run_blur_detect,CachedBlurImg
 import cv2
 from detects.face import known_face_names,known_face_imgs,avatars
+
 
 
 #目标检测相关的api在这里
@@ -118,7 +119,9 @@ def import_dir():
 
     rel_path = os.path.relpath(dir, Path.cwd())
     PathDict[web_dir] = rel_path
-    pre_dir(web_dir)
+    total = executor.submit(pre_dir,web_dir)
+    print(total)
+
     with open('PathDict.pkl','wb') as file:
         pickle.dump(PathDict,file)
         file.close()
