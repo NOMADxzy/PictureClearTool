@@ -1,24 +1,24 @@
+import pickle
 import time
 from PIL import Image, ImageDraw
 import numpy as np
 from flask import Blueprint,request,redirect
-import os
+import os,math
 import sys
 from pathlib import Path
-from tools.yolo import pre_single,draw_box
+from tools.yolo import pre_single,draw_box,pre_dir
 from tools.general import PathDict,relpath_from_webpath,webpath_from_relpath,\
     thumbnail_from_webpath,HOST,get_tag,names,Tag,get_img_paths,is_screen_shot,webpath_belongto_dir,\
-    TagGroup,get_img_detail
+    TagGroup,get_img_detail,is_allowed_ext
 from detects.blur import run_blur_detect,CachedBlurImg
 import cv2
 from detects.face import known_face_names,known_face_imgs,avatars
 
+
 #目标检测相关的api在这里
 detectapp = Blueprint('img_detect',__name__)
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}#判断格式正确
-def isallowed_ext(s):
-    return '.' in s and s.rsplit('.',1)[1] in ALLOWED_EXTENSIONS
+
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
@@ -32,7 +32,7 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 def detect():
     relpath = request.json['source']
     print(relpath)
-    if(isallowed_ext(relpath)):
+    if(is_allowed_ext(relpath)):
         pre_res = pre_single(source=relpath)
     img0 = cv2.imread(relpath)
     img1 = draw_box(img0,pre_res)
@@ -98,6 +98,31 @@ def box_img():
     path = 'temp/' + str(time.time()) + '_' + relpath.rsplit('/', 1)[1]  # 放临时文件夹下
     cv2.imwrite(path, img1)
     return ({'box_img': HOST+path})
+
+@detectapp.route('/import_dir', methods=['GET'])
+def import_dir():
+    dir = request.args['dir']
+    if(dir[-1]=='/'): dir = dir[:-1]
+    print('add new directory '+dir)
+    dir_splited = dir.rsplit('/', 1)
+    if (len(dir_splited) == 2):
+        web_dir = dir_splited[1]
+    else: return 'error dir',404
+    reldir = os.path.relpath(Path.cwd(), dir)
+    if (web_dir == 'temp'or web_dir) in PathDict: return 'dir name already used', 400
+    # orig_dir = web_dir
+    # times = 1
+    # while (web_dir in PathDict):  # 后面加数字与已出现的同名文件夹区分
+    #     web_dir = orig_dir + str(times)
+    #     times += 1
+
+    rel_path = os.path.relpath(dir, Path.cwd())
+    PathDict[web_dir] = rel_path
+    pre_dir(web_dir)
+    with open('PathDict.pkl','wb') as file:
+        pickle.dump(PathDict,file)
+        file.close()
+    return web_dir
 
 @detectapp.route('/thing',methods=['GET'])
 def thing():
@@ -171,7 +196,7 @@ def blur_detect(dir):
         for webpath,ft in CachedBlurImg:
             if filt and not webpath_belongto_dir(webpath,dir): continue#按文件夹过滤
             relpath = relpath_from_webpath(webpath)
-            if(not os.path.exists(relpath)): continue
+            if not relpath or not os.path.exists(relpath): continue
             img = {
                  'id': relpath,
                  'index': num,
@@ -236,23 +261,33 @@ def fat(dir):
     imgs, num = [], 0
     for webdir in dirs:
         reldir = PathDict[webdir]
-        relpaths = get_img_paths(reldir)
-        for relpath in relpaths:
-            file = relpath.rsplit('/', 1)[1]
-            size = os.path.getsize(relpath)
-            img = {
-                'id': relpath,
-                'index': num,
-                'thumbnail': HOST + '/' + webdir + '/.thumbnail/' + file,
-                'original': HOST + '/' + webdir + '/' + file,
-                'tags': get_tag(webdir + '/' + file),
-                'size':size,
-                'details': get_img_detail(relpath),
-            }
-            imgs.append(img)
-            num += 1
-    imgs.sort(key=lambda x:x['size'],reverse=True)
-    return {'imgs':imgs}
+        for root, dirs, files in os.walk(str(reldir)):
+            dirs[:] = []
+
+            for file in files:
+                if not is_allowed_ext(file): continue
+
+                details = get_img_detail(root+'/'+file)
+                size_group = 0
+                if details[0]<102400: size_group=0
+                elif details[0]<1024*1024: size_group=1
+                else: size_group = math.ceil(details[0]/(1024*1024))
+                if(size_group>7):size_group=7
+                img = {
+                    'id': root+'/'+file,
+                    'index': num,
+                    'thumbnail': HOST + '/' + webdir + '/.thumbnail/' + file,
+                    'original': HOST + '/' + webdir + '/' + file,
+                    'tags': get_tag(webdir + '/' + file),
+                    'details': details,
+                    'size_group':size_group
+                }
+                imgs.append(img)
+                num += 1
+    imgs.sort(key=lambda x: x['details'][0], reverse=True)
+    for i,img in enumerate(imgs):#修正index
+        img['index'] = i
+    return {'imgs': imgs}
 
 @detectapp.route('/bLur_screen_fat/__all__',methods=['GET'])
 def bLur_screen_fat_all():
@@ -261,7 +296,7 @@ def bLur_screen_fat_all():
         blurs += blur_detect(dir)['imgs']
         screens += screenshot(dir)['imgs']
         fats += fat(dir)['imgs']
-    return {'blurs':blurs[:10],'screenshots':screens,'fats':fats[:10]}
+    return {'blurs':blurs[:10],'screenshots':screens,'fats':fats[:10],'thicks':fats[-10:]}
 
 @detectapp.route('/bLur_screen_fat/<path:dir>',methods=['GET'])
 def bLur_screen_fat(dir):
@@ -269,7 +304,7 @@ def bLur_screen_fat(dir):
     blurs = blur_detect(dir)['imgs']
     screens = screenshot(dir)['imgs']
     fats = fat(dir)['imgs']
-    return {'blurs':blurs,'screenshots':screens,'fats':fats[:10]}
+    return {'blurs':blurs,'screenshots':screens,'fats':fats[:10],'thicks':fats[-10:]}
 
 
 # #加载模型

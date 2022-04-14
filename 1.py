@@ -14,6 +14,8 @@ relpath = 'pics/8502299.jpg'
 #         print('%s (%s) = %s' % (nice, k, v))
 import os,time
 
-print(get_img_detail(relpath))
-print(is_screen_shot(relpath))
+# print(get_img_detail(relpath))
+# print(is_screen_shot(relpath))
+
+print(os.path.exsits(False))
 

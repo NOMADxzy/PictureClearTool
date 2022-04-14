@@ -17,7 +17,7 @@ if(os.path.exists(blur_zip_path)):#存在则读取上次的结果
 def purify():
     for i,relpath in enumerate(relpaths):
         if (not os.path.exists(relpath)):
-            print('(blur) cant find :'+relpath,+'do removing it')
+            print('(blur) cant find :'+relpath+'do removing it')
             relpaths.pop(i)
             fms.pop(i)
             if(webpath_from_relpath(relpath) in CachedBlurImg): CachedBlurImg.remove(relpath)

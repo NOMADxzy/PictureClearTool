@@ -4,7 +4,10 @@ import pickle,sqlite3,re
 import time
 
 PathDict = {'pics':'pics','Desktop':'..','test_blur':'test_blur','person':'person','foods':'../../Pictures/foods'}
-
+with open('PathDict.pkl','rb') as file:
+    PathDict = pickle.load(file)
+    file.close()
+PathDict['pics'] = 'pics'
 HOST = 'http://localhost:5000/'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg','webp'}#判断格式正确
 names= ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
@@ -20,6 +23,7 @@ Tag,TagGroup = {},{}
 #Tag:{webpath:[boxs,tags]...}
 #TagGroup:{tag:[webpath1,webpath2...],[...]...}
 def is_allowed_ext(s):
+    if s[0]== '.': return False
     return '.' in s and s.rsplit('.',1)[1] in ALLOWED_EXTENSIONS
 
 def is_screen_shot(relpath):
@@ -28,13 +32,16 @@ def is_screen_shot(relpath):
     general_resolution = [(1080,1920),(720,1280),(1080,2400)]
     return file[0:10].lower()=='screenshot' or details[2] in general_resolution
 
-def get_img_paths(dir):#由relpdir获取relpaths
+def get_img_paths(dir,webpath=False):#由relpdir获取relpaths
     imglist = []
     for root, dirs, files in os.walk(dir):
         dirs[:] = []
         for file in files:
             if (not is_allowed_ext(file)): continue
-            imglist.append(root+'/'+file)
+            if(webpath):
+                imglist.append(webpath+'/'+file)
+            else:
+                imglist.append(root+'/'+file)
     return imglist
 
 def get_thumbnail_pic(path):#生成单张图片或文件夹下所有图片的缩略图
@@ -60,11 +67,12 @@ def get_thumbnail_pic(path):#生成单张图片或文件夹下所有图片的缩
 
 def relpath_from_webpath(webpath):#webpath 转成系统相对路径relpath
     pathsplited = webpath.rsplit('/',1)
-    if(pathsplited[0] not in PathDict): return False
+    if(pathsplited[0] not in PathDict):
+        return False
     else:
         return PathDict[pathsplited[0]]+'/'+ pathsplited[1]
-def webpath_from_relpath(webpath):#relpath 转成网络路径webpath
-    pathsplited = webpath.rsplit('/',1)
+def webpath_from_relpath(relpath):#relpath 转成网络路径webpath
+    pathsplited = relpath.rsplit('/',1)
     for webdir in PathDict:
         if(PathDict[webdir]==pathsplited[0]): return webdir+'/'+pathsplited[1]
     else: return False
@@ -78,6 +86,7 @@ def get_tag(webpath):
     return list(Tag[webpath][1]) if(webpath in Tag) else []
 
 def webpath_belongto_dir(webpath,dir):
+    pathsplited = webpath.rsplit('/', 1)
     return webpath[0:len(dir)] == dir
 
 def get_img_detail(relpath):
@@ -95,6 +104,7 @@ def get_img_detail(relpath):
         date_and_time = time.split(' ')#日期和时间分开
 
     return [size,date_and_time[0], img.size,date_and_time[1]]
+
 
     # inside_sql = False#方法内部连接数据库
     # if(cursor==None):

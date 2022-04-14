@@ -13,14 +13,14 @@ from utils.general import (LOGGER, check_file, check_img_size, check_imshow, col
                            increment_path, non_max_suppression, scale_coords)
 from utils.plots import Annotator, colors
 from utils.torch_utils import select_device, time_sync
-from tools.general import names,TagGroup,relpath_from_webpath,Tag,PathDict
+from tools.general import names,TagGroup,relpath_from_webpath,Tag,PathDict,is_allowed_ext
 
-# 加载标签分类信息(tagclassified),清理不存在的图片
+# 加载标签分类信息(TagGroupTable),清理不存在的图片
 t1 = time.process_time()
-detect = sqlite3.connect("detect_results.db")
+detect = sqlite3.connect("detects/detect_results.db")
 cursor = detect.cursor()
-for tag in range(len(names)):#读取tagclassified表
-    cursor.execute("""select * from tagclassified where tag = ?""", (tag,))
+for tag in range(len(names)):  # 读取TagGroupTable表
+    cursor.execute("""select * from TagGroupTable where tag = ?""", (tag,))
     result = cursor.fetchone()
     if (result == None):  # 没有记录
         TagGroup[tag] = []
@@ -29,44 +29,40 @@ for tag in range(len(names)):#读取tagclassified表
         imgs = pickle.loads(imgs_dump)
         rewrite = False
         for img in imgs:
-            if(not (relpath_from_webpath(img)and os.path.exists(relpath_from_webpath(img)) and img.split('/')[0] in PathDict)):
-                print('yolo '+img+' can not find (Tag Group)')
+            if (not (relpath_from_webpath(img) and os.path.exists(relpath_from_webpath(img)) and img.split('/')[
+                0] in PathDict)):
+                print('yolo ' + img + ' can not find (Tag Group)')
                 imgs.remove(img)
                 rewrite = True
-        #图片组发生改变则重写
-        if(rewrite):
-            print('(yolo)rewrite tag group '+names[tag])
-            cursor.execute("""update tagclassified set imgs = ? where tag = ?;""", (pickle.dumps(imgs), tag))
-        TagGroup[tag] = imgs#读取到内存中使用
+        # 图片组发生改变则重写
+        if (rewrite):
+            print('(yolo)rewrite tag group ' + names[tag])
+            cursor.execute("""update TagGroupTable set imgs = ? where tag = ?;""", (pickle.dumps(imgs), tag))
+        TagGroup[tag] = imgs  # 读取到内存中使用
 t2 = time.process_time()
-print("(yolo)load and check tag group, done spent time: "+str(t2-t1))
-#加载box检测结果（Tag）
-cursor.execute("""select * from Tag""")
+print("(yolo)load and check tag group, done spent time: " + str(t2 - t1))
+# 加载box检测结果（Tag）
+cursor.execute("""select * from TagTable""")
 result = cursor.fetchall()
-if(not result==None):#有数据
-    rewrite,del_list = False,[]
+if (not result == None):  # 有数据
+    rewrite, del_list = False, []
     for r in result:
-        webpath,box_dump,tag_dump = r
-        if (not (relpath_from_webpath(webpath) and os.path.exists(relpath_from_webpath(webpath)) and webpath.split('/')[0] in PathDict)):
+        webpath, box_dump, tag_dump = r
+        if (not (relpath_from_webpath(webpath) and os.path.exists(relpath_from_webpath(webpath)) and
+                 webpath.split('/')[0] in PathDict)):
             print(webpath + '(yolo) can not find (Tag)')
             rewrite = True
             del_list.append(webpath)
-        else:Tag[webpath] = (pickle.loads(box_dump),pickle.loads(tag_dump))
-    if(rewrite):
-        cursor.execute("delete from Tag where path in (" + str(del_list)[1:-1] + ")")
+        else:
+            Tag[webpath] = (pickle.loads(box_dump), pickle.loads(tag_dump))
+    if (rewrite):
+        cursor.execute("delete from TagTable where path in (" + str(del_list)[1:-1] + ")")
         print('(yolo) rewrite tag delete' + str(del_list))
 
 t3 = time.process_time()
-print("(yolo)load and check Tag, done spent time: "+str(t3-t2))
+print("(yolo)load and check Tag, done spent time: " + str(t3 - t2))
 detect.commit()
 detect.close()
-
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}  # 判断格式正确
-
-
-def is_allowed_ext(s):
-    return '.' in s and s.rsplit('.', 1)[1] in ALLOWED_EXTENSIONS
-
 
 # FILE = Path(__file__).resolve()
 # ROOT = FILE.parents[1]  # YOLOv5 root directory
@@ -75,15 +71,13 @@ def is_allowed_ext(s):
 # ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 # 加载模型
 device = select_device('')
-model = DetectMultiBackend('weights/final.pt', device=device, dnn=False, data='data/coco128.yaml', fp16=False)
-
-
+model = DetectMultiBackend('weights/yolov5m.pt', device=device, dnn=False, data='data/coco128.yaml',
+                                    fp16=False)
 # 加载
-
 @torch.no_grad()
 def pre_single(
         source='data/temp/bus.jpg',  # file/dir/URL/glob, 0 for webcam
-        imgsz=(640, 640),  # inference size (height, width)
+        imgsz=(1280, 1280),  # inference size (height, width)
         conf_thres=0.25,  # confidence threshold
         iou_thres=0.45,  # NMS IOU threshold
         max_det=1000,  # maximum detections per image
@@ -147,22 +141,12 @@ def pre_single(
     LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *imgsz)}' % t)
 
 
-def draw_box(img, boxs):
-    annotator = Annotator(img, line_width=10, example=str(names))
-    for cls, *xyxy, conf in boxs:
-        c = int(cls)  # integer class
-        label = f'{names[c]} {conf:.2f}'
-        annotator.box_label(xyxy, label, color=colors(c, True))
-    return annotator.result()
-
-
-
 def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分类，写入数据库
     if(not os.path.isdir(PathDict[web_dir])):
-        print('(yolo) ' + webdir + ' 文件夹不存在')
+        print('(yolo) ' + web_dir + ' 文件夹不存在')
         return 0
     cluster = {}
-    detect = sqlite3.connect("detect_results.db")
+    detect = sqlite3.connect("detects/detect_results.db")
     cursor = detect.cursor()
     total = 0 #new image num
     for root, dirs, files in os.walk(PathDict[web_dir]):
@@ -186,26 +170,26 @@ def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分
             Tag[web_path] = [(boxs,tags)]
             tags_dump = pickle.dumps(list(set(tags)))
             boxs_dump = pickle.dumps(boxs)
-            cursor.execute("""select * from Tag where path=(?)""", (web_path,))
+            cursor.execute("""select * from TagTable where path=(?)""", (web_path,))
             exist = cursor.fetchone()
             if (exist == None):
-                Tag[webpath] = (boxs,list(set(tags)))
-                cursor.execute("""insert into Tag values (?,?,?)""", (web_path, boxs_dump, tags_dump))
+                Tag[web_path] = (boxs,list(set(tags)))
+                cursor.execute("""insert into TagTable values (?,?,?)""", (web_path, boxs_dump, tags_dump))
     # 写入tag聚类表
     for cls in cluster:
-        cursor.execute("""select * from tagclassified where tag=(?)""", (cls,))
+        cursor.execute("""select * from TagGroupTable where tag=(?)""", (cls,))
         res = cursor.fetchone()
         if (res == None):
             imgs_dump = pickle.dumps(list(set(cluster[cls])))
             print('(yolo) creating tag group' + names[cls] + ' add' + str(cluster[cls]))
-            cursor.execute("""insert into tagclassified values (?,?)""", (cls, imgs_dump))
+            cursor.execute("""insert into TagGroupTable values (?,?)""", (cls, imgs_dump))
             TagGroup[cls] = list(set(cluster[cls]))
         else:
             cls, img0s_dump = res
             img0s = pickle.loads(img0s_dump)
             img1s_dump = pickle.dumps(list(set(img0s + cluster[cls])))
             print('(yolo) updating tag group '+names[cls]+' add'+str(cluster[cls]))
-            cursor.execute("""update tagclassified set imgs = ? where tag = ?;""", (img1s_dump, cls))
+            cursor.execute("""update TagGroupTable set imgs = ? where tag = ?;""", (img1s_dump, cls))
             TagGroup[cls] = list(set(img0s + cluster[cls]))
 
     detect.commit()
@@ -214,22 +198,18 @@ def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分
 
 #扫描所有文件夹，检测新增的图片
 new_num = 0
-for webdir in PathDict:
-    new_num += pre_dir(webdir)
+for web_dir in PathDict:
+    new_num += pre_dir(web_dir)
 t4 = time.process_time()
 print("(yolo)check and detect new images,"+str(new_num)+" done spent time: "+str(t4-t3))
 
 
 
-# def img_from_tag(tag_name):
-    # detect = sqlite3.connect("detect_results.db")
-    # cursor = detect.cursor()
-    # if (not tag_name in names):  # 没有该标签
-    #     return []
-    # tag = names.index(tag_name)
-    # cursor.execute("""select * from tagclassified where tag = ?""", (tag,))
-    # result = cursor.fetchone()
-    # if (result == None):  # 没有记录
-    #     return {'imgs': []}
-    # t, imgs_dump = result
-    # imgs = pickle.loads(imgs_dump)
+
+def draw_box(img, boxs):
+    annotator = Annotator(img, line_width=10, example=str(names))
+    for cls, *xyxy, conf in boxs:
+        c = int(cls)  # integer class
+        label = f'{names[c]} {conf:.2f}'
+        annotator.box_label(xyxy, label, color=colors(c, True))
+    return annotator.result()

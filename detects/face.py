@@ -10,6 +10,10 @@ import shutil
 from tools.general import get_img_paths,PathDict,TagGroup,relpath_from_webpath
 import numpy as np
 
+# class Face():
+#     def __init__(self):
+
+
 known_face_names,known_face_imgs,known_face_encodings,mislead = [],[],[],[]#已提取的人脸数据
 cached,avatars = [],[]
 face_zip_path = 'detects/faces_zip.pkl'
@@ -23,35 +27,48 @@ if(os.path.exists(face_zip_path)):#存在则读取上次的结果
             print('(face) 文件错误')
         finally: file.close()
 
-def purify():
-    known_face_names_c = copy.deepcopy(known_face_names)
-    known_face_imgs_c = copy.deepcopy(known_face_imgs)
-    for i,name in enumerate(known_face_names_c):
-        imgs_c = known_face_imgs_c[i]#某一人物的所有照片
-        imgs = known_face_imgs[i]
+def remove_duplicate(img_poses):
+    webpaths = []
+    img_poses1 = []
+    for i,img_pos in enumerate(img_poses):
+        if not img_pos[0] in webpaths:#确保某一人物下的所有图片不重复
+            webpaths.append(img_pos[0])
+            img_poses1.append(img_pos)
+    return img_poses1
 
-        for j,face in enumerate(imgs_c):
-            if (not os.path.exists(relpath_from_webpath(face[0]))):
-                imgs.pop(j)
-            else: cached.append(face[0])#已检测过的图片
-        if len(imgs)==0:#该人物已经清空
-            known_face_names.pop(i)
-            known_face_imgs.pop(i)
-            known_face_encodings.pop(i)
+
+def purify():
+    known_face_names1, known_face_imgs1, known_face_encodings1 = [],[],[]
+    for i,name in enumerate(known_face_names):
+        imgs = remove_duplicate(known_face_imgs[i])#去重
+        imgs1 = []#存放去除不存在后的人脸图片
+
+        for j,face in enumerate(imgs):
+            if (os.path.exists(relpath_from_webpath(face[0]))):
+                imgs1.append(face)
+                cached.append(face[0])  # 已检测过的图片
+        if len(imgs1)!=0:#该人物已经清空
+            known_face_names1.append(name)
+            known_face_imgs1.append(imgs1)
+            known_face_encodings1.append(known_face_encodings[i])
+
     for webpath in mislead:#mislead中去除不存在的照片
-        if(not os.path.exists(webpath)):
+        if not os.path.exists(webpath):
             mislead.remove(webpath)
-    with open(face_zip_path, 'wb') as file:
+
+    with open(face_zip_path, 'wb') as file:#所有的更改写回文件
         faces_zip = [known_face_names, known_face_encodings,known_face_imgs]
         pickle.dump(faces_zip, file)
         file.close()
 
+    return known_face_names1, known_face_imgs1, known_face_encodings1
+
 
 # 获得所有带person标签的文件
 def get_paths():
-    detect = sqlite3.connect("detect_results.db")
+    detect = sqlite3.connect("detects/detect_results.db")
     cursor = detect.cursor()
-    cursor.execute("""select * from tagclassified where tag = ?""", (0,))
+    cursor.execute("""select * from TagGroupTable where tag = ?""", (0,))
     t, imgs_dump = cursor.fetchone()
     webpaths = pickle.loads(imgs_dump)
     detect.close()
@@ -110,7 +127,7 @@ def find(webpaths):
                     print("(face) matched "+image_path + " : " + name)
                     known_face_imgs[id].append((webpath, [left, top, right, bottom]))
             else:  # 不和当前已有人脸匹配
-                name = '未命名 '
+                name = '未命名'
                 print('(face) find new person : '+webpath)
                 known_face_names.append(name)
                 known_face_encodings.append(face_encoding)
@@ -126,30 +143,33 @@ def find(webpaths):
         # 显示总的时间开销
         print('%d pictures checked, and %d pictures copied with known faces.' % (count_checked, count_copied))
         print('time spend: %d seconds, %d microseconds.' % ((t2 - t1).seconds, (t2 - t1).microseconds))
-        print('load_image_file time: %d seconds, %d microseconds.' % (t10.seconds, t10.microseconds))
-        print('face_locations  time: %d seconds, %d microseconds.' % (t20.seconds, t20.microseconds))
-        print('face_encodings  time: %d seconds, %d microseconds.' % (t30.seconds, t30.microseconds))
-        print('compare_faces   time: %d seconds, %d microseconds.' % (t40.seconds, t40.microseconds))
-        print('shutil.copy     time: %d seconds, %d microseconds.' % (t50.seconds, t50.microseconds))
+        # print('load_image_file time: %d seconds, %d microseconds.' % (t10.seconds, t10.microseconds))
+        # print('face_locations  time: %d seconds, %d microseconds.' % (t20.seconds, t20.microseconds))
+        # print('face_encodings  time: %d seconds, %d microseconds.' % (t30.seconds, t30.microseconds))
+        # print('compare_faces   time: %d seconds, %d microseconds.' % (t40.seconds, t40.microseconds))
+        # print('shutil.copy     time: %d seconds, %d microseconds.' % (t50.seconds, t50.microseconds))
 
 def generate_avatar():
     for i,group in enumerate(known_face_imgs):
         webpath,pos = group[0]
-        avatar = Image.open(relpath_from_webpath(webpath))
+        relpath = relpath_from_webpath(webpath)
+        if(not relpath): continue
+        avatar = Image.open(relpath)
         avatar = avatar.crop(pos)
         try:
             name = '未命名'+str(i) if known_face_names[i] == '未命名' else known_face_names[i]
-            avatar_path = 'temp/avatar/'  +  name+ '.jpg'
+            avatar_path = 'temp/avatar/'  +  name+ '.png'
             avatar.save(avatar_path)
             avatars.append(avatar_path)
         except:
-            print('(face)保存' + known_face_names[i] + '头像失败')
+            print('(face)保存' + webpath + '头像失败')
     print("(face) generated person avatar")
 
 
+known_face_names,known_face_imgs,known_face_encodings = purify()  # 删除不存在的路径
 def run():
-    purify()  # 删除不存在的路径
     find(get_paths())  # 匹配所有新增的人脸照片
+    print(known_face_names)
     generate_avatar()
 
     print('face process stand by')
