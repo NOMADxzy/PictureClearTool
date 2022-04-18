@@ -2,7 +2,7 @@ from flask import Blueprint,request
 
 from retrieval.extract_cnn_vgg16_keras import VGGNet
 from tools.general import relpath_from_webpath,thumbnail_from_webpath,get_tag,HOST,webpath_belongto_dir,\
-    get_thumbnail_pic,get_img_detail,executor,settings
+    get_thumbnail_pic,get_img_detail,executor,settings,webpath_from_relpath
 from tools.val import database_file_path
 import numpy as np
 from retrieval.index import names,feats,index_dir
@@ -54,16 +54,29 @@ def retrieval():
     # if(relpath_from_webpath(candicates[0][0])==query): candicates = candicates[1:]
     detect.close()
     return {'num':num,'candicates':candicates}
-
-@retrievalapp.route('/cpt_all/<path:dir>',methods=['GET'])
+@retrievalapp.route('/cpt_all/<path:dir>',methods=['GET','POST'])
 def cpt_all(dir):
-    if(len(feats)==0):
+    thre = settings['rela']
+    names0 = names
+    if request.method == 'POST':
+        relpaths = request.json['paths']
+        webpaths = [webpath_from_relpath(relpath) for relpath in relpaths]
+
+        feats1,names1 = [],[]
+        for i,name in enumerate(names0):
+            if(name in webpaths):
+                feats1.append(feats[i])
+                names1.append(name)
+
+    else:
+        feats1,names1 = feats,names
+
+    if(len(feats1)==0):
         return {'total': 0, 'relative': []}
     filt = True
     dir_len = len(dir)
     if dir=='__all__': filt = False
-    thre = 0.8
-    f = np.asarray(feats)
+    f = np.asarray(feats1)
     mat = np.dot(f,f.T)
     mat = np.triu(mat,0)#取上三角(包含对角线)，过滤重复检测
     args = np.argwhere(mat >= thre)
@@ -74,11 +87,11 @@ def cpt_all(dir):
         if(cur<arg[0]):#按行分组
             cur += 1
             rela_imgs.append([])
-        if(os.path.exists(relpath_from_webpath(names[arg[1]]))):#该图片存在
+        if(os.path.exists(relpath_from_webpath(names1[arg[1]]))):#该图片存在
             if filt:#指定文件夹的相似图片
-                if names[arg[1]][0:dir_len]==dir: rela_imgs[cur].append((names[arg[1]],mat[arg[0],arg[1]]))
+                if names1[arg[1]][0:dir_len]==dir: rela_imgs[cur].append((names1[arg[1]],mat[arg[0],arg[1]]))
                 #不需要指定文件夹的相似图片
-            else: rela_imgs[cur].append((names[arg[1]],mat[arg[0],arg[1]]))
+            else: rela_imgs[cur].append((names1[arg[1]],mat[arg[0],arg[1]]))
 
 
     #删除图片数不足两张的
