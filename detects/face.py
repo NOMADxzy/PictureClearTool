@@ -9,17 +9,19 @@ import os, pickle, sqlite3
 import shutil
 from tools.general import get_img_paths, PathDict, TagGroup, \
     relpath_from_webpath, executor,settings
+from tools.val import face_zip_path,database_file_path
 import numpy as np
 
 known_face_names, known_face_imgs, known_face_encodings, mislead = [], [], [], []  # 已提取的人脸数据
 cached, avatars = [], []
-face_zip_path = 'detects/faces_zip.pkl'
+
 
 if (os.path.exists(face_zip_path)):  # 存在则读取上次的结果
     with open(face_zip_path, 'rb') as file:
         try:
-            face_zip = pickle.load(file)
-            known_face_names, known_face_encodings, known_face_imgs, mislead = face_zip
+            if os.path.getsize(face_zip_path) > 100:
+                face_zip = pickle.load(file)
+                known_face_names, known_face_encodings, known_face_imgs, mislead = face_zip
         except:
             print('(face) 文件错误')
         finally:
@@ -43,7 +45,7 @@ def purify():
         imgs1 = []  # 存放去除不存在的照片后的人脸图片
 
         for j, face in enumerate(imgs):
-            if (os.path.exists(relpath_from_webpath(face[0]))):
+            if (relpath_from_webpath(face[0]) and os.path.exists(relpath_from_webpath(face[0]))):
                 imgs1.append(face)
                 cached.append(face[0])  # 已检测过的图片
         if len(imgs1) != 0:  # 该人物未清空
@@ -52,12 +54,12 @@ def purify():
             known_face_encodings1.append(known_face_encodings[i])
 
     for webpath in mislead:  # mislead中去除不存在的照片
-        if not os.path.exists(webpath):
+        if not os.path.exists(relpath_from_webpath(webpath)):
             mislead.remove(webpath)
 
     if(len(known_face_names1)>0):
         with open(face_zip_path, 'wb') as file:  # 所有的更改写回文件
-            faces_zip = [known_face_names1, known_face_encodings1, known_face_imgs1]
+            faces_zip = [known_face_names1, known_face_encodings1, known_face_imgs1,mislead]
             pickle.dump(faces_zip, file)
             file.close()
 
@@ -66,7 +68,7 @@ def purify():
 
 # 获得所有带person标签的文件
 def get_paths():
-    detect = sqlite3.connect("detects/detect_results.db")
+    detect = sqlite3.connect(database_file_path)
     cursor = detect.cursor()
     cursor.execute("""select * from TagGroupTable where tag = ?""", (0,))
     t, imgs_dump = cursor.fetchone()
@@ -85,8 +87,10 @@ def find(webpaths):
     t40 = t10
     t50 = t10
     count_checked, count_copied = 0, 0
+    print('cached: '+str(len(cached))+'mislead: '+str(len(mislead)))
     for webpath in webpaths:
-        if (webpath in cached or webpath in mislead): continue  # 已检测过的照片/不含人脸的照片
+        if (webpath in cached or webpath in mislead or not relpath_from_webpath(webpath)): continue  # 已检测过的照片/不含人脸的照片
+        print('(face) check new img '+webpath)
         image_path = relpath_from_webpath(webpath)
         # 加载图片
         t00 = datetime.now()
@@ -98,6 +102,8 @@ def find(webpaths):
         t00 = datetime.now()
         face_locations = face_recognition.face_locations(unknown_image)
         if (len(face_locations) == 0): mislead.append(webpath)
+
+
         # face_locations = face_recognition.face_locations(unknown_image, number_of_times_to_upsample=0, model="cnn")
         t20 += datetime.now() - t00
 
@@ -155,7 +161,9 @@ def generate_avatar():
     for i, group in enumerate(known_face_imgs):
         webpath, pos = group[0]
         relpath = relpath_from_webpath(webpath)
-        if (not relpath): continue
+        if (not relpath):
+            continue
+
         avatar = Image.open(relpath)
         avatar = avatar.crop(pos)
         try:
@@ -172,8 +180,9 @@ known_face_names, known_face_imgs, known_face_encodings = purify()  # 删除不�
 
 
 def run():
-    find(get_paths())  # 匹配所有新增的人脸照片
-    print(known_face_names)
+    paths = get_paths()
+    find(paths)  # 匹配所有新增的人脸照片
+    print('find person num '+ str(known_face_names))
     generate_avatar()
     print('face process stand by')
 

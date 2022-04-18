@@ -2,25 +2,32 @@ from imutils import paths
 import argparse,_thread
 import cv2,pickle,os
 from tools.general import get_img_paths,PathDict,webpath_from_relpath,settings
+from tools.val import blur_zip_path
 
-blur_zip_path = 'detects/blurs_zip.pkl'
 relpaths,fms,CachedBlurImg = [],[],[]
 if(os.path.exists(blur_zip_path)):#存在则读取上次的结果
-    with open(blur_zip_path,'rb') as file:
-        try:
-            blur_zip = pickle.load(file)
-            relpaths,fms,CachedBlurImg = blur_zip
-        except:
-            print('文件错误')
-        finally: file.close()
+    if os.path.getsize(blur_zip_path)>100:
+        with open(blur_zip_path,'rb') as file:
+            try:
+                blur_zip = pickle.load(file)
+                relpaths,fms,CachedBlurImg = blur_zip
+            except:
+                print('文件错误')
+            finally: file.close()
 
 def purify():
+    relpaths1,fms1,CachedBlurImg1 = [],[],[]
     for i,relpath in enumerate(relpaths):
-        if (not os.path.exists(relpath)):
+        webpath = webpath_from_relpath(relpath)
+        if (not os.path.exists(relpath) or not webpath):
             print('(blur) cant find :'+relpath+'do removing it')
-            relpaths.pop(i)
-            fms.pop(i)
-            if(webpath_from_relpath(relpath) in CachedBlurImg): CachedBlurImg.remove(relpath)
+        else:
+            relpaths1.append(relpath)
+            fms1.append(fms[i])
+            CachedBlurImg1.append((webpath,fms1[i]))
+    relpaths[:] = relpaths1
+    fms[:] = fms1
+    CachedBlurImg[:] = CachedBlurImg1
     with open(blur_zip_path, 'wb') as file:
         faces_zip = [relpaths, fms, CachedBlurImg]
         pickle.dump(faces_zip, file)
@@ -50,8 +57,9 @@ def run_blur_detect(webdir ,thres = settings['blur']):
         fm = conpute_laplace(gray)
         relpaths.append(imagePath)
         fms.append(fm)
-        #小于阈值不模糊
+        #小于阈值模糊
         if fm < thres:
+            print('(blur) new blur img '+imagePath + ' thres = '+str(fm))
             updated += 1
             CachedBlurImg.append((webdir+'/'+imagePath.rsplit('/',1)[1],fm))
         # 显示结果

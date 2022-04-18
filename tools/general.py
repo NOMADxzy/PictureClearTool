@@ -1,21 +1,28 @@
-import os
+import os,sqlite3
 from PIL import Image
 import pickle,sqlite3,re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from tools.val import pathdict_file_path,settings_file_path
+
+
 executor = ThreadPoolExecutor()
 
-settings = {'blur':70,'face':0.5,'rela':0.75}
-if(os.path.exists('setting.cfg')):
-    with open('setting.cfg', 'rb') as file:
+# 加载设置信息（阈值等）
+if(os.path.exists(settings_file_path)):
+    with open(settings_file_path, 'rb') as file:
         settings = pickle.load(file)
         file.close()
+else: settings = {'blur':70,'face':0.5,'rela':0.75,'weight':'中'}
 
-PathDict = {'pics':'pics','Desktop':'..','foods':'../../Pictures/foods'}
-if(os.path.exists('PathDict.pkl')):
-    with open('PathDict.pkl','rb') as file:
+# 加载注册的文件夹
+PathDict = {}
+if(os.path.exists(pathdict_file_path)):
+    with open(pathdict_file_path,'rb') as file:
         PathDict = pickle.load(file)
         file.close()
+
+
 HOST = 'http://localhost:5000/'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg','webp'}#判断格式正确
 names= ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
@@ -30,15 +37,22 @@ names= ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 't
 Tag,TagGroup = {},{}
 #Tag:{webpath:[boxs,tags]...}
 #TagGroup:{tag:[webpath1,webpath2...],[...]...}
+
+#创建临时文件夹和头像文件夹
+if not os.path.exists('temp'):
+    os.mkdir('temp')
+if not os.path.exists('temp/avatar'):
+    os.mkdir('temp/avatar')
+
 def is_allowed_ext(s):
     if s[0]== '.': return False
     return '.' in s and s.rsplit('.',1)[1] in ALLOWED_EXTENSIONS
 
 def is_screen_shot(relpath):
     file = relpath.rsplit('/',1)[1]
-    details = get_img_detail(relpath)
+    img = Image.open(relpath)
     general_resolution = [(1080,1920),(720,1280),(1080,2400)]
-    return file[0:10].lower()=='screenshot' or details[2] in general_resolution
+    return file[0:10].lower()=='screenshot' or img.size in general_resolution
 
 def get_img_paths(dir,webpath=False):#由relpdir获取relpaths
     imglist = []
@@ -88,6 +102,7 @@ def webpath_from_relpath(relpath):#relpath 转成网络路径webpath
 
 def thumbnail_from_webpath(webpath):
     webpathsplited = webpath.rsplit('/',1)
+    if(len(webpathsplited)<2): print(webpath)
     return webpathsplited[0]+'/.thumbnail/'+webpathsplited[1]
 
 def get_tag(webpath):
@@ -97,23 +112,30 @@ def webpath_belongto_dir(webpath,dir):
     pathsplited = webpath.rsplit('/', 1)
     return webpath[0:len(dir)] == dir
 
-def get_img_detail(relpath):
+def get_img_detail(relpath,cursor):
     import time
+    cursor.execute('select * from detail where relpath = ?',(relpath,))
+    res = cursor.fetchone()
+    if(res):
+        r,detail_dump = res
+        return pickle.loads(detail_dump)
+    else: print(str(relpath) + 'detail not in database')
+    if( not os.path.exists(relpath)) : return None
     img = Image.open(relpath)
     info = img._getexif()
     size = os.path.getsize(relpath)
 
-    if info is None or 306 not in info:
+    if info is None or 306 not in info:#没有就用文件修改日期
         time = time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(os.stat(relpath).st_mtime))
         date_and_time = time.split(' ')  # 只要日期
-        return [size,date_and_time[0],img.size,date_and_time[1]]
     else:
         time = info[306]
         date_and_time = time.split(' ')#日期和时间分开
 
     # resolution = str(img.size[0]) + 'x' + str(img.size[1])
-
-    return [size,date_and_time[0], img.size,date_and_time[1]]
+    detail = [size,date_and_time[0], img.size,date_and_time[1]]
+    cursor.execute('insert into detail values (?,?)',(relpath,pickle.dumps(detail)))
+    return detail
 
 
     # inside_sql = False#方法内部连接数据库
@@ -131,4 +153,4 @@ def get_img_detail(relpath):
     # if(inside_sql):
     #     detect.commit()
     #     detect.close()
-    # return tags
+    # return 

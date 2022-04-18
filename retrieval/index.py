@@ -11,16 +11,23 @@ import argparse
 
 from retrieval.extract_cnn_vgg16_keras import VGGNet
 from tools.general import relpath_from_webpath, PathDict, is_allowed_ext, executor
+from tools.val import retrieval_file_path
 import ssl
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
+feat_path = retrieval_file_path
 # 读取图片特征库
-h5_file = h5py.File('retrieval/feature.h5', 'r')
-feats = h5_file['feats'][:].tolist()
-names = h5_file['names'][:]
-names = [e.decode() for e in names]
-h5_file.close()
+names,feats = [],[]
+if os.path.exists(feat_path):
+    if(os.path.getsize(feat_path)<100):
+        os.remove(feat_path)
+    else:
+        h5_file = h5py.File(retrieval_file_path, 'r')
+        feats = h5_file['feats'][:].tolist()
+        names = h5_file['names'][:]
+        names = [e.decode() for e in names]
+        h5_file.close()
 
 '''
  Returns a list of filenames for all jpg images in a directory. 
@@ -37,14 +44,19 @@ def get_imlist(path):
 
 
 def purify_feature():
+    names1,feats1 = [],[]
     for i, webpath in enumerate(names):
         relpath = relpath_from_webpath(webpath)
-        if (not (relpath and os.path.exists(relpath) and webpath.split('/')[0] in PathDict)):
+        if (not (relpath and os.path.exists(relpath))):
             print('(retrieval) remove ' + webpath)
-            names.remove(webpath)
-            feats.remove(feats[i])
+        else:
+            names1.append(webpath)
+            feats1.append(feats[i])
+
+    names[:] = names1
+    feats[:] = feats1
     # 存入文件
-    h5f = h5py.File('retrieval/feature.h5', 'w')
+    h5f = h5py.File(retrieval_file_path, 'w')
     h5f.create_dataset('feats', data=np.array(feats))
     h5f.create_dataset('names', data=names)
     h5f.close()
@@ -65,7 +77,7 @@ def index_dir(webdir):
         names.append(img_name)
         print("(retrieval) extracting feature from image No. %d ," + img_name + "; " + str(i + 1))
 
-    h5f = h5py.File('retrieval/feature.h5', 'w')  # 存入文件
+    h5f = h5py.File(retrieval_file_path, 'w')  # 存入文件
     h5f.create_dataset('feats', data=np.array(feats))
     h5f.create_dataset('names', data=names)
     h5f.close()

@@ -1,4 +1,4 @@
-import pickle
+import pickle,sqlite3
 import time
 from PIL import Image, ImageDraw
 import numpy as np
@@ -10,6 +10,7 @@ from tools.yolo import pre_single,draw_box,pre_dir
 from tools.general import PathDict,relpath_from_webpath,webpath_from_relpath,\
     thumbnail_from_webpath,HOST,get_tag,names,Tag,get_img_paths,is_screen_shot,webpath_belongto_dir,\
     TagGroup,get_img_detail,is_allowed_ext,executor
+from tools.val import database_file_path,pathdict_file_path
 from detects.blur import run_blur_detect,CachedBlurImg
 import cv2
 from detects.face import known_face_names,known_face_imgs,avatars
@@ -48,6 +49,7 @@ def redirect_to_all():
 
 @detectapp.route('/search/<path:tag_name>',methods=['GET'])
 def search(tag_name):
+    if(tag_name not in names): return {'total':0,'imgs':[]}
     filt = False  # 按文件夹过滤
     if('dir' in request.args):
         dir = request.args['dir']
@@ -58,6 +60,9 @@ def search(tag_name):
     if(filt): print('searchdir: '+ dir)
     if(tag_name==''): return redirect('/get_all_pics') #返回所有图片
     imgs = TagGroup[names.index(tag_name)]
+
+    detect = sqlite3.connect(database_file_path)  # 连接数据库
+    cursor = detect.cursor()
 
     imgs_pack = []
     num = 0
@@ -75,10 +80,11 @@ def search(tag_name):
               'index': num,
               'thumbnail': HOST + thumb_img,
               'original': HOST + img,
-              'details': get_img_detail(root + '/' + img_splited[1]),
+              'details': get_img_detail(root + '/' + img_splited[1],cursor),
               'tags': get_tag(img)}
         imgs_pack.append(im)
         num+=1
+    detect.close()
     return {'total':num,'imgs':imgs_pack}
 
 @detectapp.route('/box_img',methods=['POST'])
@@ -122,17 +128,21 @@ def import_dir():
     total = executor.submit(pre_dir,web_dir)
     print(total)
 
-    with open('PathDict.pkl','wb') as file:
+    with open(pathdict_file_path,'wb') as file:
         pickle.dump(PathDict,file)
         file.close()
     return web_dir
 
 @detectapp.route('/thing',methods=['GET'])
 def thing():
-    thres = 5
+    thres = 1
     imgs, num =  [], 0
     g_sizes = [len(TagGroup[tagid]) for tagid in TagGroup]
     sortidxs = np.argsort(np.asarray(g_sizes))
+
+    detect = sqlite3.connect(database_file_path)  # 连接数据库
+    cursor = detect.cursor()
+
     for iid in range(len(names)):
         id = sortidxs[len(names)-1-iid]
         if(id==0): continue#跳过人物
@@ -146,32 +156,30 @@ def thing():
                   'original': HOST + webpath,
                   'name': names[id],
                   'avatar':HOST+thumbnail_from_webpath(webpath),
-                  'details': get_img_detail(relpath),
+                  'details': get_img_detail(relpath,cursor),
                   'tags': get_tag(webpath)}
             ims.append(im)
         num += len(ims)
         imgs.append(ims)
 
-    return {'imgs':imgs}
+    detect.close()
+    return {'imgs':imgs,'total':num}
 
 @detectapp.route('/face',methods=['GET'])
 def face():
     personnames,imgs,num = [],[],0
+    detect = sqlite3.connect(database_file_path)  # 连接数据库
+    cursor = detect.cursor()
     for i in range(len(known_face_names)):
         personname = known_face_names[i]
         group = []
         for j,im in enumerate(known_face_imgs[i]):
             webpath,pos = im
-            # #生成头像
-            # if(j==0):
-            #     avatar = Image.open(relpath_from_webpath(webpath))
-            #     avatar = avatar.crop(pos)
-            #     try:
-            #         avatar_path = 'temp/' +str(time.time())+'_'+ personname+'.jpg'
-            #         avatar.save(avatar_path)
-            #     except:
-            #         print('保存' + personname + '头像失败')
+
             relpath = relpath_from_webpath(webpath)
+            if not relpath:continue
+            print(len(known_face_names))
+            print(len(avatars))
             img = {
                 'id': relpath,
                 'index': num+j,
@@ -180,17 +188,20 @@ def face():
                 # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
                 'tags': get_tag(webpath),
                 'name':personname,
-                'details': get_img_detail(relpath),
+                'details': get_img_detail(relpath,cursor),
                 'avatar':HOST+avatars[i]
             }
             group.append(img)
         imgs.append(group)
         personnames.append(personname)
         num += len(group)
+    detect.close()
     return {'names':personnames,'imgs':imgs}
 
 @detectapp.route('/blur_detect/<path:dir>',methods=['GET'])
 def blur_detect(dir):
+    detect = sqlite3.connect(database_file_path)  # 连接数据库
+    cursor = detect.cursor()
     filt = True
     if(dir=='__all__'):
         filt = False
@@ -205,7 +216,7 @@ def blur_detect(dir):
                  'index': num,
                  'thumbnail': HOST + thumbnail_from_webpath(webpath),
                  'original':HOST + webpath,
-                'details': get_img_detail(relpath),
+                'details': get_img_detail(relpath,cursor),
                  # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
                  'tags': get_tag(webpath),
                  'ft':ft
@@ -225,15 +236,19 @@ def blur_detect(dir):
                      'original':HOST + webpath,
                      # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
                      'tags': get_tag(webpath),
-                     'details': get_img_detail(relpath),
+                     'details': get_img_detail(relpath,cursor),
                      'ft':ft
                 }
                 num+=1
                 blur_imgs.append(img)
-    return {'imgs':blur_imgs}
+
+    detect.close()
+    return {'imgs':blur_imgs,'total':num}
 
 @detectapp.route('/screenshot/<path:dir>',methods=['GET'])
 def screenshot(dir):
+    detect = sqlite3.connect(database_file_path)  # 连接数据库
+    cursor = detect.cursor()
     dirs = [dir]
     if (dir == '__all__'):
         dirs = PathDict
@@ -250,14 +265,18 @@ def screenshot(dir):
                     'thumbnail': HOST + '/'+webdir+'/.thumbnail/'+file,
                     'original': HOST + '/'+webdir+'/'+file,
                     'tags': get_tag(webdir+'/'+file),
-                    'details': get_img_detail(relpath),
+                    'details': get_img_detail(relpath,cursor),
                 }
                 imgs.append(img)
                 num += 1
-    return {'imgs':imgs}
+
+    detect.close()
+    return {'imgs':imgs,'total':num}
 
 @detectapp.route('/fat/<path:dir>',methods=['GET'])
 def fat(dir):
+    detect = sqlite3.connect(database_file_path)  # 连接数据库
+    cursor = detect.cursor()
     dirs = [dir]
     if (dir == '__all__'):
         dirs = PathDict
@@ -270,7 +289,7 @@ def fat(dir):
             for file in files:
                 if not is_allowed_ext(file): continue
 
-                details = get_img_detail(root+'/'+file)
+                details = get_img_detail(root+'/'+file,cursor)
                 size_group = 0
                 if details[0]<102400: size_group=0
                 elif details[0]<1024*1024: size_group=1
@@ -290,7 +309,8 @@ def fat(dir):
     imgs.sort(key=lambda x: x['details'][0], reverse=True)
     for i,img in enumerate(imgs):#修正index
         img['index'] = i
-    return {'imgs': imgs}
+    detect.close()
+    return {'imgs': imgs,'total':num}
 
 @detectapp.route('/bLur_screen_fat/__all__',methods=['GET'])
 def bLur_screen_fat_all():
@@ -308,6 +328,50 @@ def bLur_screen_fat(dir):
     screens = screenshot(dir)['imgs']
     fats = fat(dir)['imgs']
     return {'blurs':blurs,'screenshots':screens,'fats':fats[:10],'thicks':fats[-10:]}
+
+@detectapp.route('/class_clear',methods=['POST'])
+def class_clear():
+    detect = sqlite3.connect(database_file_path)  # 连接数据库
+    cursor = detect.cursor()
+    paths = request.json['paths']
+    grouplen = len(paths)
+    blurs,num = [],0
+    webpaths = [webpath_from_relpath(path) for path in paths]
+    for i,img_fm in enumerate(CachedBlurImg):
+        if(img_fm[0] in webpaths):
+            webpath = img_fm[0]
+            relpath = relpath_from_webpath(webpath)
+            img = {
+                'id': relpath,
+                'index': num,
+                'thumbnail': HOST + thumbnail_from_webpath(webpath),
+                'original': HOST + webpath,
+                'details': get_img_detail(relpath, cursor),
+                # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
+                'tags': get_tag(webpath),
+                'ft': img_fm[1]
+            }
+            blurs.append(img)
+            num+=1
+    blurs.sort(key=lambda x:x['ft'])
+    fats,num = [],0
+    for path in paths:
+        webpath = webpath_from_relpath(path)
+        img = {
+            'id': path,
+            'index': num,
+            'thumbnail': HOST + thumbnail_from_webpath(webpath),
+            'original': HOST + webpath,
+            'details': get_img_detail(path, cursor),
+            # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
+            'tags': get_tag(webpath),
+        }
+        fats.append(img)
+        num+=1
+    fats.sort(key=lambda x:x['details'][0],reverse=True)
+    detect.close()
+    return {'blurs':blurs,'fats':fats[:grouplen//3]}
+
 
 
 # #加载模型

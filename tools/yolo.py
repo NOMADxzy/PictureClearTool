@@ -13,11 +13,13 @@ from utils.general import (LOGGER, check_file, check_img_size, check_imshow, col
                            increment_path, non_max_suppression, scale_coords)
 from utils.plots import Annotator, colors
 from utils.torch_utils import select_device, time_sync
-from tools.general import names,TagGroup,relpath_from_webpath,Tag,PathDict,is_allowed_ext
+from tools.general import names,TagGroup,relpath_from_webpath,Tag,\
+    PathDict,is_allowed_ext,settings
+from tools.val import database_file_path,yolo_weights_paths
 
 # 加载标签分类信息(TagGroupTable),清理不存在的图片
 t1 = time.process_time()
-detect = sqlite3.connect("detects/detect_results.db")
+detect = sqlite3.connect(database_file_path)
 cursor = detect.cursor()
 for tag in range(len(names)):  # 读取TagGroupTable表
     cursor.execute("""select * from TagGroupTable where tag = ?""", (tag,))
@@ -70,8 +72,14 @@ detect.close()
 #     sys.path.append(str(ROOT))  # add ROOT to PATH
 # ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 # 加载模型
+if(settings['weight']=='高'):
+    weight_path = yolo_weights_paths[0]
+elif settings['weight']=='中':
+    weight_path = yolo_weights_paths[1]
+else:
+    weight_path = yolo_weights_paths[2]
 device = select_device('')
-model = DetectMultiBackend('weights/yolov5m.pt', device=device, dnn=False, data='data/coco128.yaml',
+model = DetectMultiBackend(weight_path, device=device, dnn=False, data='data/coco128.yaml',
                                     fp16=False)
 # 加载
 @torch.no_grad()
@@ -146,7 +154,7 @@ def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分
         print('(yolo) ' + web_dir + ' 文件夹不存在')
         return 0
     cluster = {}
-    detect = sqlite3.connect("detects/detect_results.db")
+    detect = sqlite3.connect(database_file_path)
     cursor = detect.cursor()
     total = 0 #new image num
     for root, dirs, files in os.walk(PathDict[web_dir]):
