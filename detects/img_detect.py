@@ -68,6 +68,7 @@ def search(tag_name):
     num = 0
     for img in imgs:
         img_splited = img.rsplit('/',1)
+        if (img_splited[0] not in PathDict): continue
         root = PathDict[img_splited[0]]
         #移除失效路径
         if (img_splited[0] not in PathDict or not os.path.exists(
