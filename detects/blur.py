@@ -24,12 +24,10 @@ def purify():
         else:
             relpaths1.append(relpath)
             fms1.append(fms[i])
-            CachedBlurImg1.append((webpath,fms1[i]))
-    relpaths[:] = relpaths1
-    fms[:] = fms1
-    CachedBlurImg[:] = CachedBlurImg1
+            CachedBlurImg1.append((webpath,fms[i]))
+
     with open(blur_zip_path, 'wb') as file:
-        faces_zip = [relpaths, fms, CachedBlurImg]
+        faces_zip = [relpaths1, fms1, CachedBlurImg1]
         pickle.dump(faces_zip, file)
         file.close()
 
