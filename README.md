@@ -8,3 +8,7 @@ https://pytorch.org/get-started/locally/
 pip install -r requirements.txt
 
 python app.py
+
+初次运行easyocr下载模型失败的话需手动下载english_g2,zh_sim_g2,craft_mlt_25k
+解压到~/.EasyOCR/model下
+https://www.jaided.ai/easyocr/modelhub/
