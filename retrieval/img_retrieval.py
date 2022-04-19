@@ -24,7 +24,9 @@ def index(dir):
 
 @retrievalapp.route('/',methods=['POST','GET'])
 def retrieval():
-    if(len(feats)==0): return {'num':0,'candicates':[]}
+    if(len(feats)==0):
+        candicates = []
+        return {'num':0,'candicates':candicates}
     max_res = len(feats)
     min_res = 0
     if 'min' in request.json:
@@ -80,7 +82,8 @@ def cpt_all(dir):
         feats1,names1 = feats,names
 
     if(len(feats1)==0):
-        return {'total': 0, 'relative': []}
+        relative = []
+        return {'total': 0, 'relative': relative}
     filt = True
     dir_len = len(dir)
     if dir=='__all__': filt = False

@@ -24,7 +24,8 @@ if(os.path.exists(pathdict_file_path)):
 
 
 HOST = 'http://localhost:5000/'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg','webp'}#判断格式正确
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg','webp','JPG','JPEG','PNG'}#判断格式正确
+
 names= ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
         'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
         'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',

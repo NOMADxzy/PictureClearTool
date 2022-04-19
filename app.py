@@ -36,7 +36,8 @@ def get_pics(webdir, baseindex=0):
     if(webdir=='') : return redirect('/get_all_pics')
     if not webdir in PathDict or not os.path.isdir(PathDict[webdir]):
         print(webdir + '(get_pics) dir not exist')
-        return {'total': 0, 'imgs': []}
+        imgs = []
+        return {'total': 0, 'imgs': imgs}
     root = PathDict[webdir]
     print('get pics from '+root)
     detect = sqlite3.connect(database_file_path)  # 连接数据库

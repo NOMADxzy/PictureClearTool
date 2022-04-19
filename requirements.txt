@@ -13,3 +13,4 @@ pillow
 imutils
 opencv-python
 h5py
+easyocr

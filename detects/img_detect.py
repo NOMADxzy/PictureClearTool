@@ -14,6 +14,7 @@ from tools.val import database_file_path,pathdict_file_path
 from detects.blur import run_blur_detect,CachedBlurImg
 import cv2
 from detects.face import known_face_names,known_face_imgs,avatars,find,generate_avatar
+from detects.ocr import read
 
 
 
@@ -49,7 +50,9 @@ def redirect_to_all():
 
 @detectapp.route('/search/<path:tag_name>',methods=['GET'])
 def search(tag_name):
-    if(tag_name not in names): return {'total':0,'imgs':[]}
+    if(tag_name not in names):
+        imgs = []
+        return {'total':0,'imgs':imgs}
     filt = False  # 按文件夹过滤
     if('dir' in request.args):
         dir = request.args['dir']
@@ -140,6 +143,12 @@ def import_dir():
         pickle.dump(PathDict,file)
         file.close()
     return web_dir
+
+@detectapp.route('/ocr',methods=['GET'])
+def ocr():
+    relpath = request.args['id']
+    result,float_left = read(relpath)
+    return {'result':result,'float_left':float_left}
 
 @detectapp.route('/thing',methods=['GET'])
 def thing():
