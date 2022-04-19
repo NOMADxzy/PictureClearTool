@@ -104,8 +104,8 @@ def show_photo(dir, file):
 @app.route('/delete', methods=['POST'])
 def deletefiles():
     webpaths = list(set(request.json['paths']))
-    deletetags(webpaths,osremove=True)
     print('remove '+str(webpaths))
+    deletetags(webpaths,osremove=True)
     return str(len(webpaths)), 200
 
 def deletetags(webpaths,osremove=False):
