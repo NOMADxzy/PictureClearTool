@@ -226,8 +226,8 @@ def blur_detect(dir):
             blur_imgs.append(img)
     else:
         for webdir in PathDict:
-            blur_webpaths = run_blur_detect(webdir)
-            for webpath,ft in blur_webpaths:
+            run_blur_detect(webdir)
+            for webpath,ft in CachedBlurImg:
                 if filt and not webpath_belongto_dir(webpath, dir): continue  # 按文件夹过滤
                 relpath = relpath_from_webpath(webpath)
                 img = {
