@@ -9,7 +9,7 @@ from pathlib import Path
 from tools.yolo import pre_single,draw_box,pre_dir
 from tools.general import PathDict,relpath_from_webpath,webpath_from_relpath,\
     thumbnail_from_webpath,HOST,get_tag,names,Tag,get_img_paths,is_screen_shot,webpath_belongto_dir,\
-    TagGroup,get_img_detail,is_allowed_ext,executor
+    TagGroup,get_img_detail,is_allowed_ext,executor,settings
 from tools.val import database_file_path,pathdict_file_path
 from detects.blur import run_blur_detect,CachedBlurImg
 import cv2
@@ -201,6 +201,7 @@ def face():
 
 @detectapp.route('/blur_detect/<path:dir>',methods=['GET'])
 def blur_detect(dir):
+    thres = settings['blur']
     detect = sqlite3.connect(database_file_path)  # 连接数据库
     cursor = detect.cursor()
     filt = True
@@ -211,7 +212,7 @@ def blur_detect(dir):
         for webpath,ft in CachedBlurImg:
             if filt and not webpath_belongto_dir(webpath,dir): continue#按文件夹过滤
             relpath = relpath_from_webpath(webpath)
-            if not relpath or not os.path.exists(relpath): continue
+            if not relpath or not os.path.exists(relpath ) or ft > thres: continue
             img = {
                  'id': relpath,
                  'index': num,
@@ -228,7 +229,7 @@ def blur_detect(dir):
         for webdir in PathDict:
             run_blur_detect(webdir)
             for webpath,ft in CachedBlurImg:
-                if filt and not webpath_belongto_dir(webpath, dir): continue  # 按文件夹过滤
+                if filt and not webpath_belongto_dir(webpath, dir) or ft > thres: continue  # 按文件夹过滤
                 relpath = relpath_from_webpath(webpath)
                 img = {
                      'id': relpath,
@@ -244,6 +245,9 @@ def blur_detect(dir):
                 blur_imgs.append(img)
 
     detect.close()
+    blur_imgs.sort(key=lambda x:x['ft'])
+    for i,img in enumerate(blur_imgs):
+        img['index'] = i
     return {'imgs':blur_imgs,'total':num}
 
 @detectapp.route('/screenshot/<path:dir>',methods=['GET'])
@@ -315,23 +319,32 @@ def fat(dir):
 
 @detectapp.route('/bLur_screen_fat/__all__',methods=['GET'])
 def bLur_screen_fat_all():
-    blurs, screens, fats = [], [], []
+    blurs, screens, sizes = [], [], []
+    fats,thicks = [],[]
     for dir in PathDict:
         blurs += blur_detect(dir)['imgs']
         screens += screenshot(dir)['imgs']
-        fats += fat(dir)['imgs']
-    return {'blurs':blurs[:10],'screenshots':screens,'fats':fats[:10],'thicks':fats[-10:]}
+        sizes += fat(dir)['imgs']
+    for img in sizes:
+        if(img['size_group']==0) : thicks.append(img)
+        elif(img['size_group']>1): fats.append(img)
+    return {'blurs':blurs[:10],'screenshots':screens,'fats':fats[:10],'thicks':thicks}
 
 @detectapp.route('/bLur_screen_fat/<path:dir>',methods=['GET'])
 def bLur_screen_fat(dir):
-    blurs,screens,fats = [],[],[]
+    blurs,screens,sizes = [],[],[]
+    fats, thicks = [], []
     blurs = blur_detect(dir)['imgs']
     screens = screenshot(dir)['imgs']
-    fats = fat(dir)['imgs']
-    return {'blurs':blurs,'screenshots':screens,'fats':fats[:10],'thicks':fats[-10:]}
+    sizes = fat(dir)['imgs']
+    for img in sizes:
+        if(img['size_group']==0) : thicks.append(img)
+        elif(img['size_group']>1): fats.append(img)
+    return {'blurs':blurs,'screenshots':screens,'fats':fats[:10],'thicks':thicks}
 
 @detectapp.route('/class_clear',methods=['POST'])
 def class_clear():
+    thres = settings['blur']
     detect = sqlite3.connect(database_file_path)  # 连接数据库
     cursor = detect.cursor()
     paths = request.json['paths']
@@ -342,6 +355,7 @@ def class_clear():
         if(img_fm[0] in webpaths):
             webpath = img_fm[0]
             relpath = relpath_from_webpath(webpath)
+            if not relpath or img_fm[1]>thres: continue
             img = {
                 'id': relpath,
                 'index': num,
