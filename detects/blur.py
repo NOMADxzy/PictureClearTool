@@ -30,6 +30,9 @@ def purify():
         faces_zip = [relpaths1, fms1, CachedBlurImg1]
         pickle.dump(faces_zip, file)
         file.close()
+    relpaths[:] = relpaths1
+    fms[:] = fms1
+    CachedBlurImg[:] = CachedBlurImg1
 
 def conpute_laplace(image):
     return cv2.Laplacian(image, cv2.CV_64F).var()

@@ -13,7 +13,7 @@ from tools.general import PathDict,relpath_from_webpath,webpath_from_relpath,\
 from tools.val import database_file_path,pathdict_file_path
 from detects.blur import run_blur_detect,CachedBlurImg
 import cv2
-from detects.face import known_face_names,known_face_imgs,avatars
+from detects.face import known_face_names,known_face_imgs,avatars,find,generate_avatar
 
 
 
@@ -107,6 +107,12 @@ def box_img():
     cv2.imwrite(path, img1)
     return ({'box_img': HOST+path})
 
+def preparedir(webdir):
+    pre_dir(webdir)
+    run_blur_detect(webdir)
+    find(get_img_paths(PathDict[webdir],webpath=webdir))
+    generate_avatar()
+
 @detectapp.route('/import_dir', methods=['GET'])
 def import_dir():
     dir = request.args['dir']
@@ -126,8 +132,9 @@ def import_dir():
 
     rel_path = os.path.relpath(dir, Path.cwd())
     PathDict[web_dir] = rel_path
-    total = executor.submit(pre_dir,web_dir)
-    print(total)
+
+    total = executor.submit(preparedir,web_dir)
+    redirect('retrieval/index/'+web_dir)
 
     with open(pathdict_file_path,'wb') as file:
         pickle.dump(PathDict,file)

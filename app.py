@@ -27,7 +27,7 @@ for dir in PathDict:
 @app.route('/', methods=['GET'])
 def hello():
     return {'name':'image tool backend',
-            'pathdict':PathDict}
+            'pathdict':PathDict,'taggroup':TagGroup,'tag':Tag}
 
 
 # 获取指定文件夹下的图片

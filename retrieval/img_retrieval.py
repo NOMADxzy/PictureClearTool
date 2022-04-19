@@ -16,12 +16,20 @@ retrievalapp = Blueprint('img_retrieval',__name__)
 
 model = VGGNet()
 
+@retrievalapp.route('/index/<path:dir>',methods=['GET'])
+def index(dir):
+    print('computing new dir vgg feature')
+    total = executor.submit(index_dir,dir)
+    return 'ok',200
 
 @retrievalapp.route('/',methods=['POST','GET'])
 def retrieval():
     if(len(feats)==0): return {'num':0,'candicates':[]}
-    max_res = 8
-    min_res = 2
+    max_res = len(feats)
+    min_res = 0
+    if 'min' in request.json:
+        min_res = request.json['min']#前端要求至少显示的结果数
+
     threshold = settings['rela']
     print('img retrieval thres = ' + str(threshold))
     query = request.json['query']#目标图片的相对路径
@@ -37,7 +45,7 @@ def retrieval():
         id = ranked_idx[i]
         webpath = names[id]
         score = scores[id]
-        if(score<threshold and i>=min_res): break
+        if(score<threshold and i>=min_res+1): break
         relpath = relpath_from_webpath(webpath)
         im = {'id': relpath,
               'index': num,
