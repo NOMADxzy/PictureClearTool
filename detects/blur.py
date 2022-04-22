@@ -68,10 +68,12 @@ def run_blur_detect(webdir ,thres = settings['blur']):
     # return blur_paths#webpath格式
     return updated
 
-def compute_blur():
+def compute_blur(dir):
     updated = 0
+
     print('blur detect thres = ' + str(settings['blur']))
     for webdir in PathDict:
+        if(dir and not webdir == dir): continue
         updated += run_blur_detect(webdir)
     if(updated>0) :
         print('(blur) find new blur images '+str(updated))

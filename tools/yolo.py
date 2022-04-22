@@ -81,12 +81,27 @@ else:
 device = select_device('')
 model = DetectMultiBackend(weight_path, device=device, dnn=False, data='data/coco128.yaml',
                                     fp16=False)
+mymodel = False
+if(os.path.exists('weights/best.pt')):
+    mymodel = DetectMultiBackend('weights/best.pt', device=device, dnn=False, data='data/my_class_train100.yaml',
+                                    fp16=False)
+
+def pre_boxs(relpath):
+    boxs1 = pre_single(model=model,source=relpath)
+    #第二个模型存在就再后面加上第二个模型的结果
+    if mymodel:
+        boxs2 = pre_single(model=mymodel, source=relpath)
+        for box in boxs2:
+            box[0] = box[0] + 80
+            boxs1.append(box)
+    return boxs1
+
 # 加载
 @torch.no_grad()
-def pre_single(
+def pre_single(model=model,
         source='data/temp/bus.jpg',  # file/dir/URL/glob, 0 for webcam
         imgsz=(640, 640),  # inference size (height, width)
-        conf_thres=0.25,  # confidence threshold
+        conf_thres=0.45,  # confidence threshold
         iou_thres=0.45,  # NMS IOU threshold
         max_det=1000,  # maximum detections per image
 ):
@@ -137,16 +152,12 @@ def pre_single(
 
                 # Write results
                 for *xyxy, conf, cls in reversed(det.tolist()):
-                    box = (cls, *xyxy, conf)  # label format
+                    box = [cls, *xyxy, conf]  # label format
                     boxs.append(box)
 
         # Print time (inference-only)
         LOGGER.info(f'{s}Done. ({t3 - t2:.3f}s)')
         return boxs
-
-    # Print results
-    t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
-    LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *imgsz)}' % t)
 
 
 def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分类，写入数据库
@@ -167,7 +178,7 @@ def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分
             if(web_path in Tag): continue#有就不预测了
             total += 1
             print('(yolo) detecting tag from '+web_path)
-            boxs = pre_single(source=rel_path)
+            boxs = pre_boxs(rel_path)
             for box in boxs:
                 cls = int(box[0])
                 if (cls in cluster):#添加到相应的聚类中

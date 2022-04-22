@@ -98,7 +98,7 @@ def cpt_all(dir):
         if(cur<arg[0]):#按行分组
             cur += 1
             rela_imgs.append([])
-        if(os.path.exists(relpath_from_webpath(names1[arg[1]]))):#该图片存在
+        if(relpath_from_webpath(names1[arg[1]]) and os.path.exists(relpath_from_webpath(names1[arg[1]]))):#该图片存在
             if filt:#指定文件夹的相似图片
                 if names1[arg[1]][0:dir_len]==dir: rela_imgs[cur].append((names1[arg[1]],mat[arg[0],arg[1]]))
                 #不需要指定文件夹的相似图片

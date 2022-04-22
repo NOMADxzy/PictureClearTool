@@ -6,14 +6,14 @@ from flask import Blueprint,request,redirect
 import os,math
 import sys
 from pathlib import Path
-from tools.yolo import pre_single,draw_box,pre_dir
+from tools.yolo import pre_boxs,draw_box,pre_dir
 from tools.general import PathDict,relpath_from_webpath,webpath_from_relpath,\
     thumbnail_from_webpath,HOST,get_tag,names,Tag,get_img_paths,is_screen_shot,webpath_belongto_dir,\
     TagGroup,get_img_detail,is_allowed_ext,executor,settings
 from tools.val import database_file_path,pathdict_file_path
-from detects.blur import run_blur_detect,CachedBlurImg
+from detects.blur import compute_blur,CachedBlurImg,run_blur_detect
 import cv2
-from detects.face import known_face_names,known_face_imgs,avatars,find,generate_avatar
+from detects.face import known_face_names,known_face_imgs,get_paths ,avatars,find,generate_avatar
 from detects.ocr import read
 
 
@@ -36,7 +36,7 @@ def detect():
     relpath = request.json['source']
     print(relpath)
     if(is_allowed_ext(relpath)):
-        pre_res = pre_single(source=relpath)
+        pre_res = pre_boxs(source=relpath)
     img0 = cv2.imread(relpath)
     img1 = draw_box(img0,pre_res)
     path = 'temp/'+str(time.time())+'_'+relpath.rsplit('/',1)[1]#放临时文件夹下
@@ -112,8 +112,8 @@ def box_img():
 
 def preparedir(webdir):
     pre_dir(webdir)
-    run_blur_detect(webdir)
-    find(get_img_paths(PathDict[webdir],webpath=webdir))
+    compute_blur(webdir)
+    find(get_paths())
     generate_avatar()
 
 @detectapp.route('/import_dir', methods=['GET'])
