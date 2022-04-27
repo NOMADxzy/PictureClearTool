@@ -12,8 +12,8 @@ from detects.img_detect import detectapp
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
-app.register_blueprint(retrievalapp, url_prefix='/retrieval')
-app.register_blueprint(detectapp, url_prefix='/detect')
+app.register_blueprint(retrievalapp, url_prefix='/retrieval')#与检索相关的接口
+app.register_blueprint(detectapp, url_prefix='/detect')#与目标、模糊、截图、文字、人脸检测的接口
 
 # 初始，检查已注册的文件夹
 for dir in PathDict:
@@ -63,10 +63,10 @@ def get_pics(webdir, baseindex=0):
             img = {'id': root + '/' + file,
                    'index': num + baseindex,
                    'webpath':webdir + '/' + file,
-                   'thumbnail': HOST + webdir + '/.thumbnail/' + file,
-                   # 'thumbnail': 'atom:///'+root+'/.thumbnail/'+file,
-                   # 'original': 'atom:///'+root+'/'+file,
-                   'original':HOST + webdir + '/' + file,
+                   # 'thumbnail': HOST + webdir + '/.thumbnail/' + file,
+                   'thumbnail': 'atom:///'+root+'/.thumbnail/'+file,
+                   'original': 'atom:///'+root+'/'+file,
+                   # 'original':HOST + webdir + '/' + file,
                    'details': get_img_detail(root + '/' + file,cursor),
                    # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
                    'tags': tag}

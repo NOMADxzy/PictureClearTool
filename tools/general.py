@@ -13,7 +13,7 @@ if(os.path.exists(settings_file_path)):
     with open(settings_file_path, 'rb') as file:
         settings = pickle.load(file)
         file.close()
-else: settings = {'blur':70,'face':0.5,'rela':0.75,'weight':'中'}
+else: settings = {'blur':70,'face':0.5,'rela':0.75,'weight':'中','mincandicate':5}
 
 # 加载注册的文件夹
 PathDict = {}
