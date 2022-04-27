@@ -1,9 +1,9 @@
 import os,sqlite3
 from PIL import Image
 import pickle,sqlite3,re
-import time
+import time,yaml
 from concurrent.futures import ThreadPoolExecutor
-from tools.val import pathdict_file_path,settings_file_path
+from tools.val import pathdict_file_path,settings_file_path,database_file_path
 
 
 executor = ThreadPoolExecutor()
@@ -26,7 +26,16 @@ if(os.path.exists(pathdict_file_path)):
 HOST = 'http://localhost:5000/'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg','webp','JPG','JPEG','PNG'}#判断格式正确
 
-names= ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
+#加载tag名称
+
+detect = sqlite3.connect(database_file_path)
+cursor = detect.cursor()
+cursor.execute('select * from Settings where key = ?',('names',))
+r = cursor.fetchone()
+if r:
+    names = pickle.loads(r[1])
+else:
+    names= ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
         'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
         'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
         'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard',
@@ -36,6 +45,10 @@ names= ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 't
         'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear',
         'hair drier', 'toothbrush',
         'paper','projector','classroom','building','road','screenshot','tree','grassland','mountain','qrcode']
+    cursor.execute('insert into Settings values (?,?)', ('names',pickle.dumps(names)))
+    detect.commit()
+detect.close()
+
 Tag,TagGroup = {},{}
 #Tag:{webpath:[boxs,tags]...}
 #TagGroup:{tag:[webpath1,webpath2...],[...]...}
@@ -46,15 +59,20 @@ if not os.path.exists('temp'):
 if not os.path.exists('temp/avatar'):
     os.mkdir('temp/avatar')
 
+#训练配置文件
+with open('./data/my_class_train100.yaml', 'r', encoding='utf8') as f:
+    info = yaml.load(f.read(), Loader=yaml.FullLoader)
+    f.close()
+
 def is_allowed_ext(s):
     if s[0]== '.': return False
     return '.' in s and s.rsplit('.',1)[1] in ALLOWED_EXTENSIONS
 
 def is_screen_shot(relpath):
     file = relpath.rsplit('/',1)[1]
-    img = Image.open(relpath)
-    general_resolution = [(1080,1920),(720,1280),(1080,2400)]
-    return file[0:10].lower()=='screenshot' or img.size in general_resolution
+    # img = Image.open(relpath)
+    # general_resolution = [(1080,1920),(720,1280),(1080,2400)]
+    return file[0:10].lower()=='screenshot' or '截图' in file
 
 def get_img_paths(dir,webpath=False):#由relpdir获取relpaths
     imglist = []
@@ -121,8 +139,8 @@ def get_img_detail(relpath,cursor):
     if(res):
         r,detail_dump = res
         return pickle.loads(detail_dump)
-    else: print(str(relpath) + 'detail not in database')
-    if( not os.path.exists(relpath)) : return None
+    else: print(str(relpath) + ' detail not in database')
+    if(not relpath or not os.path.exists(relpath)) : return None
     img = Image.open(relpath)
     info = img._getexif()
     size = os.path.getsize(relpath)

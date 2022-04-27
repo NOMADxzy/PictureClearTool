@@ -30,12 +30,13 @@ def retrieval():
     max_res = len(feats)
     min_res = 0
     if 'min' in request.json:
-        min_res = request.json['min']#前端要求至少显示的结果数
+        min_res = int(request.json['min'])#前端要求至少显示的结果数
+        if min_res is None: min_res = settings['mincandicates']
 
     threshold = settings['rela']
     print('img retrieval thres = ' + str(threshold))
     query = request.json['query']#目标图片的相对路径
-    print('query img '+query)
+    print('query img '+query +' min= '+str(min_res)+' thres = ' + str(threshold))
     qvec = model.extract_feat(query)
     scores = np.dot(qvec,np.asarray(feats).T)
     ranked_idx = np.argsort(scores)[::-1]
@@ -51,6 +52,7 @@ def retrieval():
         relpath = relpath_from_webpath(webpath)
         im = {'id': relpath,
               'index': num,
+              'webpath': webpath,
               # 'thumbnail': 'atom:///' + relpath,
               # 'original': 'atom:///' + relpath,
               'thumbnail': HOST + thumbnail_from_webpath(webpath),
@@ -113,6 +115,7 @@ def cpt_all(dir):
             img_list = [{
                 'id':relpath_from_webpath(img_score[0]),
                 'index':num+i,
+                'webpath': img_score[0],
                 'thumbnail': HOST + thumbnail_from_webpath(img_score[0]),
                 'original':HOST + img_score[0],
                 # 'thumbnail': 'atom:///' + relpath_from_webpath(img_score[0]),

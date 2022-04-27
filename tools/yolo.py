@@ -15,7 +15,7 @@ from utils.plots import Annotator, colors
 from utils.torch_utils import select_device, time_sync
 from tools.general import names,TagGroup,relpath_from_webpath,Tag,\
     PathDict,is_allowed_ext,settings
-from tools.val import database_file_path,yolo_weights_paths
+from tools.val import database_file_path,yolo_weights_paths,cls_idx_base
 
 # 加载标签分类信息(TagGroupTable),清理不存在的图片
 t1 = time.process_time()
@@ -26,6 +26,7 @@ for tag in range(len(names)):  # 读取TagGroupTable表
     result = cursor.fetchone()
     if (result == None):  # 没有记录
         TagGroup[tag] = []
+        cursor.execute("""insert into TagGroupTable values (?,?);""", (tag,pickle.dumps([])))
     else:
         t, imgs_dump = result
         imgs = pickle.loads(imgs_dump)
@@ -49,7 +50,7 @@ result = cursor.fetchall()
 if (not result == None):  # 有数据
     rewrite, del_list = False, []
     for r in result:
-        webpath, box_dump, tag_dump = r
+        webpath, box_dump, tag_dump, de = r
         if (not (relpath_from_webpath(webpath) and os.path.exists(relpath_from_webpath(webpath)) and
                  webpath.split('/')[0] in PathDict)):
             print(webpath + '(yolo) can not find (Tag)')
@@ -92,7 +93,7 @@ def pre_boxs(relpath):
     if mymodel:
         boxs2 = pre_single(model=mymodel, source=relpath)
         for box in boxs2:
-            box[0] = box[0] + 80
+            box[0] = box[0] + cls_idx_base
             boxs1.append(box)
     return boxs1
 
@@ -193,7 +194,7 @@ def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分
             exist = cursor.fetchone()
             if (exist == None):
                 Tag[web_path] = (boxs,list(set(tags)))
-                cursor.execute("""insert into TagTable values (?,?,?)""", (web_path, boxs_dump, tags_dump))
+                cursor.execute("""insert into TagTable values (?,?,?,?)""", (web_path, boxs_dump, tags_dump,0))
     # 写入tag聚类表
     for cls in cluster:
         cursor.execute("""select * from TagGroupTable where tag=(?)""", (cls,))

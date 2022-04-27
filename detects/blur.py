@@ -68,7 +68,7 @@ def run_blur_detect(webdir ,thres = settings['blur']):
     # return blur_paths#webpath格式
     return updated
 
-def compute_blur(dir):
+def compute_blur(dir=None):
     updated = 0
 
     print('blur detect thres = ' + str(settings['blur']))

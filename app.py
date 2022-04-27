@@ -26,8 +26,14 @@ for dir in PathDict:
 # 获取、查看、删除图片等基本接口在这里
 @app.route('/', methods=['GET'])
 def hello():
+    print(request.args)
     return {'name':'image tool backend',
-            'pathdict':PathDict,'taggroup':TagGroup,'tag':Tag}
+            'pathdict':PathDict,'taggroup':TagGroup,'tag':Tag,'names':names}
+
+@app.route('/get_abspath', methods=['GET'])
+def get_abspath():
+    rel_path = request.args['path']
+    return os.path.abspath(rel_path)
 
 
 # 获取指定文件夹下的图片
@@ -56,6 +62,7 @@ def get_pics(webdir, baseindex=0):
             tag = get_tag(webdir + '/' + file)
             img = {'id': root + '/' + file,
                    'index': num + baseindex,
+                   'webpath':webdir + '/' + file,
                    'thumbnail': HOST + webdir + '/.thumbnail/' + file,
                    # 'thumbnail': 'atom:///'+root+'/.thumbnail/'+file,
                    # 'original': 'atom:///'+root+'/'+file,
@@ -109,6 +116,62 @@ def deletefiles():
     deletetags(webpaths,osremove=True)
     return str(len(webpaths)), 200
 
+@app.route('/add_to_del', methods=['POST','GET'])
+def add_to_del():
+    detect = sqlite3.connect(database_file_path)
+    cursor = detect.cursor()
+    if(request.method=='POST'):
+        webpaths = list(set(request.json['paths']))
+        print('move out del_list ' + str(webpaths))
+        s = str(webpaths)[1:-1]
+        cursor.execute("update TagTable set del = 0 where path in (" + s + ")")
+        detect.commit()
+        detect.close()
+        return str(len(webpaths)), 200
+
+    webpath = request.args['path']
+    val = request.args['val']
+    cursor.execute('update TagTable set del = ? where path = ?',(val,webpath))
+    detect.commit()
+    detect.close()
+    return 'done',200
+
+@app.route('/get_del', methods=['GET'])
+def get_del():
+    detect = sqlite3.connect(database_file_path)
+    cursor = detect.cursor()
+
+    imgs,total,num = [],0,0
+    cursor.execute('select path from TagTable where del = 1')
+    result = cursor.fetchall()
+    if result is None:
+        return {'imgs':imgs,'total':total}
+
+    for webpath in result:
+        webpath = webpath[0]
+        webdir,file = webpath.split('/')
+        root = PathDict[webdir]
+        thumb_rel_path = root+'/.thumbnail/'+file
+        if (not os.path.exists(thumb_rel_path)):  # 缩略图不存在,生成缩略图
+            get_thumbnail_pic(root + '/' + file)
+
+        tag = get_tag(webdir + '/' + file)
+        img = {'id': root + '/' + file,
+               'index': num ,
+               'webpath': webdir + '/' + file,
+               'thumbnail': HOST + webdir + '/.thumbnail/' + file,
+               # 'thumbnail': 'atom:///'+root+'/.thumbnail/'+file,
+               # 'original': 'atom:///'+root+'/'+file,
+               'original': HOST + webdir + '/' + file,
+               'details': get_img_detail(root + '/' + file, cursor),
+               # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
+               'tags': tag}
+        imgs.append(img)
+        num += 1
+    detect.commit()
+    detect.close()
+    return {'imgs':imgs,'total':num}
+
 def deletetags(webpaths,osremove=False):
     detect = sqlite3.connect(database_file_path)
     cursor = detect.cursor()
@@ -122,7 +185,10 @@ def deletetags(webpaths,osremove=False):
 
         tag_names = get_tag(path)
 
-        tags = [names.index(tag_name) for tag_name in tag_names]  # 转成序号
+        tags = []
+        for tag_name in tag_names:
+            if tag_name in names:
+                tags.append(names.index(tag_name))# 转成序号
         for tag in tags:
             if(path in TagGroup[tag]):TagGroup[tag].remove(path)
         if osremove: os.remove(relpath)  # 文件删除
@@ -172,6 +238,7 @@ def setting():
         pickle.dump(settings,file)
         file.close()
     return 'ok',200
+
 
 
 if __name__ == '__main__':

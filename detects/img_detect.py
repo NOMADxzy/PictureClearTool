@@ -1,5 +1,6 @@
+import copy
 import pickle,sqlite3
-import time
+import time,yaml
 from PIL import Image, ImageDraw
 import numpy as np
 from flask import Blueprint,request,redirect
@@ -9,13 +10,13 @@ from pathlib import Path
 from tools.yolo import pre_boxs,draw_box,pre_dir
 from tools.general import PathDict,relpath_from_webpath,webpath_from_relpath,\
     thumbnail_from_webpath,HOST,get_tag,names,Tag,get_img_paths,is_screen_shot,webpath_belongto_dir,\
-    TagGroup,get_img_detail,is_allowed_ext,executor,settings
-from tools.val import database_file_path,pathdict_file_path
+    TagGroup,get_img_detail,is_allowed_ext,executor,settings,info
+from tools.val import database_file_path,pathdict_file_path,cls_idx_base
 from detects.blur import compute_blur,CachedBlurImg,run_blur_detect
 import cv2
 from detects.face import known_face_names,known_face_imgs,get_paths ,avatars,find,generate_avatar
 from detects.ocr import read
-
+from tools.train_prepair import add_to_train
 
 
 #目标检测相关的api在这里
@@ -82,6 +83,7 @@ def search(tag_name):
         thumb_img = img_splited[0]+'/.thumbnail/'+img_splited[1]
         im = {'id': root+'/'+img_splited[1],
               'index': num,
+              'webpath': img,
               'thumbnail': HOST + thumb_img,
               'original': HOST + img,
               'details': get_img_detail(root + '/' + img_splited[1],cursor),
@@ -105,12 +107,93 @@ def box_img():
         if(box[0]==tag_index): tag_boxs.append(box)
 
     img0 = cv2.imread(relpath)
+    print(tag_boxs)
     img1 = draw_box(img0,tag_boxs)
     path = 'temp/' + str(time.time()) + '_' + relpath.rsplit('/', 1)[1]  # 放临时文件夹下
     cv2.imwrite(path, img1)
     return ({'box_img': HOST+path})
 
+
+@detectapp.route('/add_tag',methods=['POST'])
+def add_tag():
+    detect = sqlite3.connect(database_file_path)
+    cursor = detect.cursor()
+
+    webpath = request.json['webpath']
+    newboxs = request.json['box']
+    if(len(newboxs)==0): return
+    print(newboxs)
+    print('add new tag ' + relpath_from_webpath(webpath))
+    boxs, tags = Tag[webpath]
+    mtags = []
+    for box in newboxs:
+
+        # 比例值放大成实际值
+        size = Image.open(relpath_from_webpath(webpath)).size
+
+        w, h = size
+        box[1] = int(box[1] * w)
+        box[2] = int(box[2] * h)
+        box[3] = int(box[3] * w)
+        box[4] = int(box[4] * h)
+
+        tag = box[0]
+        if tag in names:
+            tagid = names.index(tag)
+            if webpath not in TagGroup[tagid]: TagGroup[tagid].append(webpath)
+        else:
+            tagid = len(names)  # 新标签
+            names.append(tag)
+            cursor.execute('update Settings set value = ? where key = ?', (pickle.dumps(names), 'names'))
+            #修改训练文件
+            with open('./data/my_class_train100.yaml', 'w', encoding='utf8') as f:
+                info['names'] = names[cls_idx_base:]
+                info['nc'] = len(names) - cls_idx_base
+                yaml.dump(info, f, allow_unicode=True)
+                f.close()
+
+            TagGroup[tagid] = [webpath]  # 修改内存中的
+
+        box[0] = tagid#格式化box
+        box.append(1)
+
+        mtags.append(tagid)#返回给前端,记录改动的tagid后面修改相应的数据库
+        boxs.append(box)#box一定添加
+        if tag not in tags: tags.append(tag)#只有没有时才添加tag
+    Tag[webpath] = (boxs, tags)#修改内存中的
+
+    #写到数据库中
+    cursor.execute("""update TagTable set boxs = ?, tag = ? where path = ?""",
+                   (pickle.dumps(boxs), pickle.dumps(tags), webpath))
+    for tagid in mtags:
+        cursor.execute('update TagGroupTable set imgs = ? where tag = ?', (pickle.dumps(TagGroup[tagid]), tagid))
+
+    detect.commit()
+    detect.close()
+
+    add_train( webpath)
+    mtags_len = [len(TagGroup[tagid]) for tagid in mtags]
+    return {'tag_ids':mtags,'tag_ids_len':mtags_len}
+
+def add_train(webpath):
+
+    relpath = relpath_from_webpath(webpath)
+    norm_boxs = []
+    boxs = copy.deepcopy(Tag[webpath][0])
+    w,h = Image.open(relpath_from_webpath(webpath)).size
+
+    for box in boxs:
+        box[1] = box[1] / w
+        box[2] = box[2] / h
+        box[3] = box[3] / w
+        box[4] = box[4] / h
+        norm_boxs.append(box[:5])
+    add_to_train(relpath,norm_boxs)
+
+
+
 def preparedir(webdir):
+    print('prepair dir')
     pre_dir(webdir)
     compute_blur(webdir)
     find(get_paths())
@@ -167,8 +250,10 @@ def thing():
         ims = []
         for i,webpath in enumerate(TagGroup[id]):
             relpath = relpath_from_webpath(webpath)
+            if not relpath: continue
             im = {'id': relpath,
                   'index': num+i,
+                  'webpath': webpath,
                   'thumbnail': HOST + thumbnail_from_webpath(webpath),
                   'original': HOST + webpath,
                   'name': names[id],
@@ -177,7 +262,7 @@ def thing():
                   'tags': get_tag(webpath)}
             ims.append(im)
         num += len(ims)
-        imgs.append(ims)
+        if(len(ims)):imgs.append(ims)
 
     detect.close()
     return {'imgs':imgs,'total':num}
@@ -200,6 +285,7 @@ def face():
             img = {
                 'id': relpath,
                 'index': num+j,
+                'webpath': webpath,
                 'thumbnail': HOST + thumbnail_from_webpath(webpath),
                 'original': HOST + webpath,
                 # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
@@ -232,6 +318,7 @@ def blur_detect(dir):
             img = {
                  'id': relpath,
                  'index': num,
+                'webpath': webpath,
                  'thumbnail': HOST + thumbnail_from_webpath(webpath),
                  'original':HOST + webpath,
                 'details': get_img_detail(relpath,cursor),
@@ -250,6 +337,7 @@ def blur_detect(dir):
                 img = {
                      'id': relpath,
                      'index': num,
+                    'webpath': webpath,
                      'thumbnail': HOST + thumbnail_from_webpath(webpath),
                      'original':HOST + webpath,
                      # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
@@ -283,6 +371,7 @@ def screenshot(dir):
                 img = {
                     'id': relpath,
                     'index': num,
+                    'webpath': webdir+'/'+file,
                     'thumbnail': HOST + '/'+webdir+'/.thumbnail/'+file,
                     'original': HOST + '/'+webdir+'/'+file,
                     'tags': get_tag(webdir+'/'+file),
@@ -319,6 +408,7 @@ def fat(dir):
                 img = {
                     'id': root+'/'+file,
                     'index': num,
+                    'webpath': webdir + '/' + file,
                     'thumbnail': HOST + '/' + webdir + '/.thumbnail/' + file,
                     'original': HOST + '/' + webdir + '/' + file,
                     'tags': get_tag(webdir + '/' + file),
@@ -391,6 +481,7 @@ def class_clear():
         img = {
             'id': path,
             'index': num,
+            'webpath': webpath,
             'thumbnail': HOST + thumbnail_from_webpath(webpath),
             'original': HOST + webpath,
             'details': get_img_detail(path, cursor),
