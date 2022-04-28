@@ -186,7 +186,10 @@ def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分
                     if (web_path not in cluster[cls]): cluster[cls].append(web_path)  # 防止一张图片多次添加到同一个标签下
                 else:
                     cluster[cls] = [web_path]
-            tags = [names[int(box[0])] for box in boxs]
+            tags = []
+            for box in boxs:
+                if int(box[0])<len(names): tags.append(names[int(box[0])])
+
             Tag[web_path] = [(boxs,tags)]
             tags_dump = pickle.dumps(list(set(tags)))
             boxs_dump = pickle.dumps(boxs)
@@ -208,6 +211,7 @@ def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分
             cls, img0s_dump = res
             img0s = pickle.loads(img0s_dump)
             img1s_dump = pickle.dumps(list(set(img0s + cluster[cls])))
+            if cls>len(names)-1: continue
             print('(yolo) updating tag group '+names[cls]+' add'+str(cluster[cls]))
             cursor.execute("""update TagGroupTable set imgs = ? where tag = ?;""", (img1s_dump, cls))
             TagGroup[cls] = list(set(img0s + cluster[cls]))

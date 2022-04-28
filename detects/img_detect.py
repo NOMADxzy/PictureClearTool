@@ -123,6 +123,8 @@ def add_tag():
     newboxs = request.json['box']
     if(len(newboxs)==0): return
     print(newboxs)
+    # add_train(webpath,newboxs)
+    add_to_train(relpath_from_webpath(webpath), newboxs)
     print('add new tag ' + relpath_from_webpath(webpath))
     boxs, tags = Tag[webpath]
     mtags = []
@@ -171,23 +173,23 @@ def add_tag():
     detect.commit()
     detect.close()
 
-    add_train( webpath)
+
     mtags_len = [len(TagGroup[tagid]) for tagid in mtags]
     return {'tag_ids':mtags,'tag_ids_len':mtags_len}
 
-def add_train(webpath):
+def add_train(webpath,boxs):
 
     relpath = relpath_from_webpath(webpath)
     norm_boxs = []
-    boxs = copy.deepcopy(Tag[webpath][0])
+    # boxs = copy.deepcopy(Tag[webpath][0])
     w,h = Image.open(relpath_from_webpath(webpath)).size
 
-    for box in boxs:
-        box[1] = box[1] / w
-        box[2] = box[2] / h
-        box[3] = box[3] / w
-        box[4] = box[4] / h
-        norm_boxs.append(box[:5])
+    # for box in boxs:
+    #     box[1] = box[1] / w
+    #     box[2] = box[2] / h
+    #     box[3] = box[3] / w
+    #     box[4] = box[4] / h
+    #     norm_boxs.append(box[:5])
     add_to_train(relpath,norm_boxs)
 
 

@@ -3,7 +3,7 @@ from flask import Flask, request, make_response,redirect
 from pathlib import Path
 from tools.general import is_allowed_ext, get_thumbnail_pic, get_tag,settings, \
     HOST, PathDict, TagGroup, Tag, names, webpath_from_relpath, get_img_detail,get_img_paths,relpath_from_webpath
-from tools.val import database_file_path,pathdict_file_path,settings_file_path
+from tools.val import database_file_path,pathdict_file_path,settings_file_path,PORT
 import os, pickle, sqlite3
 from flask_cors import CORS
 
@@ -242,4 +242,4 @@ def setting():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=PORT, debug=True)

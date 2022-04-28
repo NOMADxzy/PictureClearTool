@@ -1,5 +1,6 @@
 from pathlib import Path
 
+#数据相关
 pathdict_file_path = 'tools/PathDict.pkl'
 face_zip_path = 'tools/faces_zip.pkl'
 blur_zip_path = 'tools/blurs_zip.pkl'
@@ -10,7 +11,10 @@ yolo_weights_paths = ['weights/yolov5x6.pt','weights/yolov5m.pt','weights/yolov5
 
 #训练相关
 cls_idx_base = 90 #后训练模型的类别索引号起点
-train_dic = str(Path.joinpath(Path.cwd(),'data/datasets/fromuser'))
+train_dic = str(Path.joinpath(Path.cwd(),'data/fromuser'))
+
+#flask相关
+PORT = 9000
 
 if __name__== '__main__':
-    print(Path.joinpath(Path.cwd(),'data/datasets/fromuser'))
+    print(Path.joinpath(Path.cwd(),'data/fromuser'))

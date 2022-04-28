@@ -3,7 +3,7 @@ from PIL import Image
 import pickle,sqlite3,re
 import time,yaml
 from concurrent.futures import ThreadPoolExecutor
-from tools.val import pathdict_file_path,settings_file_path,database_file_path
+from tools.val import pathdict_file_path,settings_file_path,database_file_path,PORT
 
 
 executor = ThreadPoolExecutor()
@@ -23,7 +23,7 @@ if(os.path.exists(pathdict_file_path)):
         file.close()
 
 
-HOST = 'http://localhost:5000/'
+HOST = 'http://127.0.0.1:'+str(PORT)+'/'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg','webp','JPG','JPEG','PNG'}#判断格式正确
 
 #加载tag名称
@@ -58,14 +58,9 @@ if not os.path.exists('temp'):
     os.mkdir('temp')
 if not os.path.exists('temp/avatar'):
     os.mkdir('temp/avatar')
-if not os.path.exists('data/datasets'):
-    os.mkdir('data/datasets')
-if not os.path.exists('data/datasets/fromuser'):
-        os.mkdir('data/datasets/fromuser')
-if not os.path.exists('data/datasets/fromuser/images'):
-    os.mkdir('data/datasets/fromuser/images')
-if not os.path.exists('data/datasets/fromuser/labels'):
-    os.mkdir('data/datasets/fromuser/labels')
+
+if not os.path.exists('data/fromuser'):
+    os.mkdir('data/fromuser')
 
 #训练配置文件
 with open('./data/my_class_train100.yaml', 'r', encoding='utf8') as f:
