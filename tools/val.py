@@ -10,7 +10,7 @@ settings_file_path = 'tools/setting.cfg'
 yolo_weights_paths = ['weights/yolov5x6.pt','weights/yolov5m.pt','weights/yolov5s.pt']
 
 #训练相关
-cls_idx_base = 90 #后训练模型的类别索引号起点
+cls_idx_base = 80 #后训练模型的类别索引号起点
 train_dic = str(Path.joinpath(Path.cwd(),'data/fromuser'))
 
 #flask相关

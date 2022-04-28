@@ -83,8 +83,8 @@ device = select_device('')
 model = DetectMultiBackend(weight_path, device=device, dnn=False, data='data/coco128.yaml',
                                     fp16=False)
 mymodel = False
-if(os.path.exists('weights/best.pt')):
-    mymodel = DetectMultiBackend('weights/best.pt', device=device, dnn=False, data='data/my_class_train100.yaml',
+if(os.path.exists('weights/cls10.pt')):
+    mymodel = DetectMultiBackend('weights/cls10.pt', device=device, dnn=False, data='data/my_class_train100.yaml',
                                     fp16=False)
 
 def pre_boxs(relpath):
@@ -95,6 +95,8 @@ def pre_boxs(relpath):
         for box in boxs2:
             box[0] = box[0] + cls_idx_base
             boxs1.append(box)
+    #根据用户标签生成的模型
+
     return boxs1
 
 # 加载
@@ -188,7 +190,8 @@ def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分
                     cluster[cls] = [web_path]
             tags = []
             for box in boxs:
-                if int(box[0])<len(names): tags.append(names[int(box[0])])
+                if int(box[0])<len(names):
+                    tags.append(names[int(box[0])])
 
             Tag[web_path] = [(boxs,tags)]
             tags_dump = pickle.dumps(list(set(tags)))
@@ -211,7 +214,7 @@ def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分
             cls, img0s_dump = res
             img0s = pickle.loads(img0s_dump)
             img1s_dump = pickle.dumps(list(set(img0s + cluster[cls])))
-            if cls>len(names)-1: continue
+            if cls>len(names)-1: break #忽略超出names的group
             print('(yolo) updating tag group '+names[cls]+' add'+str(cluster[cls]))
             cursor.execute("""update TagGroupTable set imgs = ? where tag = ?;""", (img1s_dump, cls))
             TagGroup[cls] = list(set(img0s + cluster[cls]))
