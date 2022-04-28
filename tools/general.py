@@ -58,6 +58,14 @@ if not os.path.exists('temp'):
     os.mkdir('temp')
 if not os.path.exists('temp/avatar'):
     os.mkdir('temp/avatar')
+if not os.path.exists('data/datasets'):
+    os.mkdir('data/datasets')
+if not os.path.exists('data/datasets/fromuser'):
+        os.mkdir('data/datasets/fromuser')
+if not os.path.exists('data/datasets/fromuser/images'):
+    os.mkdir('data/datasets/fromuser/images')
+if not os.path.exists('data/datasets/fromuser/labels'):
+    os.mkdir('data/datasets/fromuser/labels')
 
 #训练配置文件
 with open('./data/my_class_train100.yaml', 'r', encoding='utf8') as f:
