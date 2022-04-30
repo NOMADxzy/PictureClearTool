@@ -1,10 +1,13 @@
 # coding=UTF-8
+import copy
+
 from flask import Flask, request, make_response,redirect
 from pathlib import Path
 from tools.general import is_allowed_ext, get_thumbnail_pic, get_tag,settings, \
     HOST, PathDict, TagGroup, Tag, names, webpath_from_relpath, get_img_detail,get_img_paths,relpath_from_webpath
 from tools.val import database_file_path,pathdict_file_path,settings_file_path,PORT
 import os, pickle, sqlite3
+from send2trash import send2trash
 from flask_cors import CORS
 
 from retrieval.img_retrieval import retrievalapp
@@ -15,12 +18,14 @@ CORS(app, supports_credentials=True)
 app.register_blueprint(retrievalapp, url_prefix='/retrieval')#与检索相关的接口
 app.register_blueprint(detectapp, url_prefix='/detect')#与目标、模糊、截图、文字、人脸检测的接口
 
-# 初始，检查已注册的文件夹
+# 初始，检查已注册的文件夹,只保留还存在的
+_PathDict = {}
 for dir in PathDict:
     reldir = PathDict[dir]
-    if not os.path.exists(reldir):
+    if os.path.exists(reldir):
+        _PathDict[dir] = reldir
+    else:
         print(dir + 'not exist anymore')
-        PathDict.pop(dir)
 
 
 # 获取、查看、删除图片等基本接口在这里
@@ -191,7 +196,7 @@ def deletetags(webpaths,osremove=False):
                 tags.append(names.index(tag_name))# 转成序号
         for tag in tags:
             if(path in TagGroup[tag]):TagGroup[tag].remove(path)
-        if osremove: os.remove(relpath)  # 文件删除
+        if osremove: send2trash(relpath)  # 文件删除
         if (path in Tag): Tag.pop(path)  # Tag表中删除
     print('current tag group size: ' + str(len(TagGroup[0])))
     if (len(paths) > 0):

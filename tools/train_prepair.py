@@ -32,6 +32,7 @@ def add_to_train(relpath,boxs):
         with open(train_dic+'/'+clsName+'/'+'data.yaml', 'w', encoding='utf8') as f:
             info['names'] = [clsName]
             info['nc'] = 1
+            info['path'] = './data/fromuser/'+clsName
             yaml.dump(info, f, allow_unicode=True)
             f.close()
 

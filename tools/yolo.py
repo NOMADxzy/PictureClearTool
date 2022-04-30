@@ -96,6 +96,16 @@ def pre_boxs(relpath):
             box[0] = box[0] + cls_idx_base
             boxs1.append(box)
     #根据用户标签生成的模型
+    for name in names[90:]:
+        usermodel_path = 'weights/'+name+'.pt'
+        if os.path.exists(usermodel_path):
+            usermodel = DetectMultiBackend(usermodel_path, device=device, dnn=False,
+                                         data='data/fromuser/'+name+'/data.yaml',
+                                         fp16=False)
+            boxs = pre_single(model=usermodel, source=relpath)
+            for box in boxs:
+                box[0] = names.index(name)
+                boxs1.append(box)
 
     return boxs1
 
@@ -229,8 +239,6 @@ for web_dir in PathDict:
     new_num += pre_dir(web_dir)
 t4 = time.process_time()
 print("(yolo)check and detect new images,"+str(new_num)+" done spent time: "+str(t4-t3))
-
-
 
 
 def draw_box(img, boxs):
