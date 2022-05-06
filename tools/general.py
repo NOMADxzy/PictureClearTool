@@ -9,6 +9,7 @@ from tools.val import pathdict_file_path,settings_file_path,database_file_path,P
 executor = ThreadPoolExecutor()
 
 # 加载设置信息（阈值等）
+
 if(os.path.exists(settings_file_path)):
     with open(settings_file_path, 'rb') as file:
         settings = pickle.load(file)
@@ -24,7 +25,7 @@ if(os.path.exists(pathdict_file_path)):
 
 
 HOST = 'http://127.0.0.1:'+str(PORT)+'/'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg','webp','JPG','JPEG','PNG'}#判断格式正确
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg','webp','bmp','dng'}#判断格式正确
 
 #加载tag名称
 
@@ -69,7 +70,7 @@ with open('./data/my_class_train100.yaml', 'r', encoding='utf8') as f:
 
 def is_allowed_ext(s):
     if s[0]== '.': return False
-    return '.' in s and s.rsplit('.',1)[1] in ALLOWED_EXTENSIONS
+    return '.' in s and s.rsplit('.',1)[1].lower() in ALLOWED_EXTENSIONS
 
 def is_screen_shot(relpath):
     file = relpath.rsplit('/',1)[1]
@@ -113,9 +114,14 @@ def get_thumbnail_pic(path):#生成单张图片或文件夹下所有图片的缩
 def relpath_from_webpath(webpath):#webpath 转成系统相对路径relpath
     pathsplited = webpath.rsplit('/',1)
     if(pathsplited[0] not in PathDict):
+        print('rel_from_web dir not exist')
         return False
     else:
-        return PathDict[pathsplited[0]]+'/'+ pathsplited[1]
+        relpath = PathDict[pathsplited[0]]+'/'+ pathsplited[1]
+        if os.path.exists(relpath):
+            return relpath
+        else:
+            return False
 def webpath_from_relpath(relpath):#relpath 转成网络路径webpath
     pathsplited = relpath.rsplit('/',1)
     for webdir in PathDict:

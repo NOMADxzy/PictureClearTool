@@ -158,6 +158,9 @@ def find(webpaths):
 
 
 def generate_avatar():
+    paths = get_img_paths('temp/avatar/')
+    for p in paths:
+        os.remove(p)#删除之前的图片
     for i, group in enumerate(known_face_imgs):
         webpath, pos = group[0]
         relpath = relpath_from_webpath(webpath)

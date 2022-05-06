@@ -117,9 +117,16 @@ def show_photo(dir, file):
 @app.route('/delete', methods=['POST'])
 def deletefiles():
     webpaths = list(set(request.json['paths']))
+    relpaths = [relpath_from_webpath(webpath) for webpath in webpaths]
     print('remove '+str(webpaths))
     deletetags(webpaths,osremove=True)
-    return str(len(webpaths)), 200
+
+    detect = sqlite3.connect(database_file_path)
+    cursor = detect.cursor()
+    size = 0
+    for relpath in relpaths:
+        size += get_img_detail(relpath,cursor)[0]
+    return {'num':str(len(webpaths)),'size':[size]}, 200
 
 @app.route('/add_to_del', methods=['POST','GET'])
 def add_to_del():

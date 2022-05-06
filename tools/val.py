@@ -28,6 +28,11 @@ if not os.path.exists(database_file_path):
     	key text,
     	value BLOB
     );''')
+    cursor.execute('''CREATE TABLE blur
+        (
+        	webpath text,
+        	fm integer
+        );''')
     detects.commit()
     detects.close()
 

@@ -1,71 +1,102 @@
+import numpy as np
 from imutils import paths
 import argparse,_thread
-import cv2,pickle,os
-from tools.general import get_img_paths,PathDict,webpath_from_relpath,settings
-from tools.val import blur_zip_path
+import cv2,pickle,os,sqlite3
+from tools.general import get_img_paths,PathDict,webpath_from_relpath,\
+    settings,relpath_from_webpath
+from tools.val import database_file_path
 
-relpaths,fms,CachedBlurImg = [],[],[]
-if(os.path.exists(blur_zip_path)):#存在则读取上次的结果
-    if os.path.getsize(blur_zip_path)>100:
-        with open(blur_zip_path,'rb') as file:
-            try:
-                blur_zip = pickle.load(file)
-                relpaths,fms,CachedBlurImg = blur_zip
-            except:
-                print('文件错误')
-            finally: file.close()
+CachedBlurImg = []
 
-def purify():
-    relpaths1,fms1,CachedBlurImg1 = [],[],[]
-    for i,relpath in enumerate(relpaths):
-        webpath = webpath_from_relpath(relpath)
-        if (not os.path.exists(relpath) or not webpath):
-            print('(blur) cant find :'+relpath+'do removing it')
-        else:
-            relpaths1.append(relpath)
-            fms1.append(fms[i])
-            CachedBlurImg1.append((webpath,fms[i]))
 
-    with open(blur_zip_path, 'wb') as file:
-        faces_zip = [relpaths1, fms1, CachedBlurImg1]
-        pickle.dump(faces_zip, file)
-        file.close()
-    relpaths[:] = relpaths1
-    fms[:] = fms1
-    CachedBlurImg[:] = CachedBlurImg1
+def init():
+    blur_res = sqlite3.connect(database_file_path)
+    cursor = blur_res.cursor()
+    cursor.execute('select * from blur')
+    results = cursor.fetchall()
+    if not results is None:
+        thres = settings['blur']
+        for webpath, fm in results:
+            if not relpath_from_webpath(webpath):  # 图片不存在，移除
+                cursor.execute('delete from blur where webpath = ?', (webpath,))
+            # elif fm < thres:  # 小于清晰度阈值，加入模糊列表
+                # CachedBlurImg.append((webpath,fm))
+    blur_res.commit()
+    blur_res.close()
 
-def conpute_laplace(image):
+
+def preImgOps(relpath):
+    """
+    图像的预处理操作
+    """
+    img = cv2.imread(relpath)  # 读取图片
+    # 预处理操作
+    reImg = cv2.resize(img, (800, 900), interpolation=cv2.INTER_CUBIC)  #
+    img2gray = cv2.cvtColor(reImg, cv2.COLOR_BGR2GRAY)  # 将图片压缩为单通道的灰度图
+    return img2gray, reImg
+
+
+def compute_laplace(relpath):
+    image,reImg = preImgOps(relpath)
     return cv2.Laplacian(image, cv2.CV_64F).var()
 
-def run_blur_detect(webdir ,thres = settings['blur']):
+
+def compute_SMD2(relpath):
+    """
+    灰度方差乘积
+    """
+    # step 1 图像的预处理
+    img2gray, reImg = preImgOps(relpath)
+    f=np.matrix(img2gray)/255.0
+    x, y = f.shape
+    score = 0
+    for i in range(x - 1):
+        for j in range(y - 1):
+            score += np.abs(f[i+1,j]-f[i,j])*np.abs(f[i,j]-f[i,j+1])
+    return score
+
+
+def run_blur_detect(webdir, thres = settings['blur'], score_func='SMD2'):
+    """
+    遍历文件夹中所有图片，小于阈值的加入到模糊图片列表
+    """
     updated = 0
+
+    blur_res = sqlite3.connect(database_file_path)
+    cursor = blur_res.cursor()
+
     reldir = PathDict[webdir]
-    if(not os.path.isdir(reldir)):
+    if not os.path.isdir(reldir):
         print('(blur) ' + webdir + ' 文件夹不存在')
         return 0
-    img_paths = get_img_paths(reldir)
-    # blur_paths = []
+
+    img_paths = get_img_paths(reldir,webpath=webdir)
 
     # 遍历每一张图片
-    for imagePath in img_paths:
-        if(imagePath in relpaths): continue
-        # 读取图片
-        print('(blur) compute image fm: '+imagePath)
-        image = cv2.imread(imagePath)
-        # 将图片转换为灰度图片
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        # 计算灰度图片的方差
-        fm = conpute_laplace(gray)
-        relpaths.append(imagePath)
-        fms.append(fm)
-        #小于阈值模糊
+    for webpath in img_paths:
+        cursor.execute('select * from blur where webpath = ?',(webpath,))
+        result = cursor.fetchone()
+
+        if result is None:
+            # 读取图片
+            imagePath = relpath_from_webpath(webpath)
+            print('(blur) compute image ' + imagePath + ' func: ' + score_func)
+
+            # 计算灰度图片的方差
+            if score_func == 'SMD2':
+                fm = compute_SMD2(imagePath)
+            else:
+                fm = compute_laplace(imagePath)
+
+            cursor.execute('insert into blur values (?,?)', (webpath, fm))
+            print('(blur) new img ' + webpath + ' fm = ' + str(fm))
+        else:
+            webpath,fm = result
         if fm < thres:
-            print('(blur) new blur img '+imagePath + ' thres = '+str(fm))
             updated += 1
-            CachedBlurImg.append((webdir+'/'+imagePath.rsplit('/',1)[1],fm))
-        # 显示结果
-    # blur_paths.sort(key=lambda x:x[1])
-    # return blur_paths#webpath格式
+            CachedBlurImg.append((webpath,fm))
+    blur_res.commit()
+    blur_res.close()
     return updated
 
 def compute_blur(dir=None):
@@ -75,23 +106,21 @@ def compute_blur(dir=None):
     for webdir in PathDict:
         if(dir and not webdir == dir): continue
         updated += run_blur_detect(webdir)
-    if(updated>0) :
+
+    if updated>0:
         print('(blur) find new blur images '+str(updated))
         CachedBlurImg.sort(key=lambda x:x[1])
-    with open(blur_zip_path, 'wb') as file:
-        faces_zip = [relpaths, fms, CachedBlurImg]
-        pickle.dump(faces_zip, file)
-        file.close()
+
     print("blur service stand by")
 
 def run():
-    purify()
+    init()
     compute_blur()
 
 try:
     _thread.start_new_thread(run,())
 except:
-    print("计算模糊图片线程启动失败")
+    print("模糊图片检测线程启动失败")
 
 if __name__ == '__main__':
     # 设置参数
@@ -105,7 +134,7 @@ if __name__ == '__main__':
         # 将图片转换为灰度图片
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         # 计算灰度图片的方差
-        fm = conpute_laplace(gray)
+        fm = compute_laplace(gray)
         text = "Not Blurry"
 
         # 设置输出的文字

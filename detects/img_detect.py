@@ -316,7 +316,7 @@ def blur_detect(dir):
         for webpath,ft in CachedBlurImg:
             if filt and not webpath_belongto_dir(webpath,dir): continue#按文件夹过滤
             relpath = relpath_from_webpath(webpath)
-            if not relpath or not os.path.exists(relpath ) or ft > thres: continue
+            if not relpath or ft > thres: continue
             img = {
                  'id': relpath,
                  'index': num,
@@ -330,30 +330,6 @@ def blur_detect(dir):
             }
             num+=1
             blur_imgs.append(img)
-    else:
-        for webdir in PathDict:
-            run_blur_detect(webdir)
-            for webpath,ft in CachedBlurImg:
-                if filt and not webpath_belongto_dir(webpath, dir) or ft > thres: continue  # 按文件夹过滤
-                relpath = relpath_from_webpath(webpath)
-                img = {
-                     'id': relpath,
-                     'index': num,
-                    'webpath': webpath,
-                     'thumbnail': HOST + thumbnail_from_webpath(webpath),
-                     'original':HOST + webpath,
-                     # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
-                     'tags': get_tag(webpath),
-                     'details': get_img_detail(relpath,cursor),
-                     'ft':ft
-                }
-                num+=1
-                blur_imgs.append(img)
-
-    detect.close()
-    blur_imgs.sort(key=lambda x:x['ft'])
-    for i,img in enumerate(blur_imgs):
-        img['index'] = i
     return {'imgs':blur_imgs,'total':num}
 
 @detectapp.route('/screenshot/<path:dir>',methods=['GET'])
