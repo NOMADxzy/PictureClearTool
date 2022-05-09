@@ -1,21 +1,11 @@
-import time
-import sqlite3, pickle
-from flask import Blueprint, request
-import os,time
-import sys
-from pathlib import Path
-import cv2
-import torch
-import torch.backends.cudnn as cudnn
-from models.common import DetectMultiBackend
-from utils.datasets import IMG_FORMATS, VID_FORMATS, LoadImages, LoadStreams
-from utils.general import (LOGGER, check_file, check_img_size, check_imshow, colorstr,
-                           increment_path, non_max_suppression, scale_coords)
-from utils.plots import Annotator, colors
-from utils.torch_utils import select_device, time_sync
+import sqlite3, pickle,os,time
+
+
 from tools.general import names,TagGroup,relpath_from_webpath,Tag,\
     PathDict,is_allowed_ext,settings
 from tools.val import database_file_path,yolo_weights_paths,cls_idx_base
+
+from remotes.RPC import pre_boxs
 
 # 加载标签分类信息(TagGroupTable),清理不存在的图片
 t1 = time.process_time()
@@ -30,17 +20,18 @@ for tag in range(len(names)):  # 读取TagGroupTable表
     else:
         t, imgs_dump = result
         imgs = pickle.loads(imgs_dump)
-        rewrite = False
+        imgs1 = []
+
         for img in imgs:
-            if (not (relpath_from_webpath(img) and os.path.exists(relpath_from_webpath(img)) and img.split('/')[
-                0] in PathDict)):
+            if not relpath_from_webpath(img):
                 print('yolo ' + img + ' can not find (Tag Group)')
-                imgs.remove(img)
-                rewrite = True
+            else:
+                imgs1.append(img)
+
         # 图片组发生改变则重写
-        if (rewrite):
+        if len(imgs) != len(imgs1):
             print('(yolo)rewrite tag group ' + names[tag])
-            cursor.execute("""update TagGroupTable set imgs = ? where tag = ?;""", (pickle.dumps(imgs), tag))
+            cursor.execute("""update TagGroupTable set imgs = ? where tag = ?;""", (pickle.dumps(imgs1), tag))
         TagGroup[tag] = imgs  # 读取到内存中使用
 t2 = time.process_time()
 print("(yolo)load and check tag group, done spent time: " + str(t2 - t1))
@@ -73,105 +64,6 @@ detect.close()
 #     sys.path.append(str(ROOT))  # add ROOT to PATH
 # ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 # 加载模型
-if(settings['weight']=='高'):
-    weight_path = yolo_weights_paths[0]
-elif settings['weight']=='中':
-    weight_path = yolo_weights_paths[1]
-else:
-    weight_path = yolo_weights_paths[2]
-device = select_device('')
-model = DetectMultiBackend(weight_path, device=device, dnn=False, data='data/coco128.yaml',
-                                    fp16=False)
-mymodel = False
-if(os.path.exists('weights/cls10.pt')):
-    mymodel = DetectMultiBackend('weights/cls10.pt', device=device, dnn=False, data='data/my_class_train100.yaml',
-                                    fp16=False)
-
-def pre_boxs(relpath):
-    boxs1 = pre_single(model=model,source=relpath)
-    #第二个模型存在就再后面加上第二个模型的结果
-    if mymodel:
-        boxs2 = pre_single(model=mymodel, source=relpath)
-        for box in boxs2:
-            box[0] = box[0] + cls_idx_base
-            boxs1.append(box)
-    #根据用户标签生成的模型
-    for name in names[90:]:
-        usermodel_path = 'weights/'+name+'.pt'
-        if os.path.exists(usermodel_path):
-            usermodel = DetectMultiBackend(usermodel_path, device=device, dnn=False,
-                                         data='data/fromuser/'+name+'/data.yaml',
-                                         fp16=False)
-            boxs = pre_single(model=usermodel, source=relpath)
-            for box in boxs:
-                box[0] = names.index(name)
-                boxs1.append(box)
-
-    return boxs1
-
-# 加载
-@torch.no_grad()
-def pre_single(model=model,
-        source='data/temp/bus.jpg',  # file/dir/URL/glob, 0 for webcam
-        imgsz=(640, 640),  # inference size (height, width)
-        conf_thres=0.45,  # confidence threshold
-        iou_thres=0.45,  # NMS IOU threshold
-        max_det=1000,  # maximum detections per image
-):
-    boxs = []  # 存放检测结果
-    source = str(source)
-
-    stride, names, pt = model.stride, model.names, model.pt
-    imgsz = check_img_size(imgsz, s=stride)  # check image size
-
-    # Dataloader
-    dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt)
-    bs = 1  # batch_size
-
-    # Run inference
-    model.warmup(imgsz=(1 if pt else bs, 3, *imgsz))  # warmup
-    dt, seen = [0.0, 0.0, 0.0], 0
-    for path, im, im0s, vid_cap, s in dataset:
-        t1 = time_sync()
-        im = torch.from_numpy(im).to(device)
-        im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
-        im /= 255  # 0 - 255 to 0.0 - 1.0
-        if len(im.shape) == 3:
-            im = im[None]  # expand for batch dim
-        t2 = time_sync()
-        dt[0] += t2 - t1
-
-        # Inference
-        pred = model(im, augment=False, visualize=False)
-        t3 = time_sync()
-        dt[1] += t3 - t2
-
-        # NMS
-        pred = non_max_suppression(pred, conf_thres, iou_thres, classes=None, agnostic=False, max_det=max_det)
-        dt[2] += time_sync() - t3
-
-        # Process predictions
-        for i, det in enumerate(pred):  # per image
-            seen += 1
-            p, im0, frame = path, im0s.copy(), getattr(dataset, 'frame', 0)
-
-            if len(det):
-                # Rescale boxes from img_size to im0 size
-                det[:, :4] = scale_coords(im.shape[2:], det[:, :4], im0.shape).round()
-
-                # Print results
-                for c in det[:, -1].unique():
-                    n = (det[:, -1] == c).sum()  # detections per class
-
-                # Write results
-                for *xyxy, conf, cls in reversed(det.tolist()):
-                    box = [cls, *xyxy, conf]  # label format
-                    boxs.append(box)
-
-        # Print time (inference-only)
-        LOGGER.info(f'{s}Done. ({t3 - t2:.3f}s)')
-        return boxs
-
 
 def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分类，写入数据库
     if(not os.path.isdir(PathDict[web_dir])):
@@ -233,18 +125,11 @@ def pre_dir(web_dir):  # 对文件夹中的所有图片检测出box,根据tag分
     detect.close()
     return total
 
-#扫描所有文件夹，检测新增的图片
-new_num = 0
-for web_dir in PathDict:
-    new_num += pre_dir(web_dir)
-t4 = time.process_time()
-print("(yolo)check and detect new images,"+str(new_num)+" done spent time: "+str(t4-t3))
 
-
-def draw_box(img, boxs):
-    annotator = Annotator(img, line_width=10, example=str(names))
-    for cls, *xyxy, conf in boxs:
-        c = int(cls)  # integer class
-        label = f'{names[c]} {conf:.2f}'
-        annotator.box_label(xyxy, label, color=colors(c, True))
-    return annotator.result()
+# def draw_box(img, boxs):
+#     annotator = Annotator(img, line_width=10, example=str(names))
+#     for cls, *xyxy, conf in boxs:
+#         c = int(cls)  # integer class
+#         label = f'{names[c]} {conf:.2f}'
+#         annotator.box_label(xyxy, label, color=colors(c, True))
+#     return annotator.result()

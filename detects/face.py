@@ -1,16 +1,16 @@
 # -*- coding: UTF-8 -*-
-import copy, _thread
+import os, pickle, sqlite3
 from PIL import Image
-import dlib
-import face_recognition
 import numpy as np
 from datetime import datetime
-import os, pickle, sqlite3
-import shutil
+
 from tools.general import get_img_paths, PathDict, TagGroup, \
     relpath_from_webpath, executor,settings
 from tools.val import face_zip_path,database_file_path
-import numpy as np
+
+from remotes.RPC import Face_recognition
+face_recognition = Face_recognition()
+
 
 known_face_names, known_face_imgs, known_face_encodings, mislead = [], [], [], []  # 已提取的人脸数据
 cached, avatars = [], []
@@ -51,13 +51,13 @@ def purify():
         if len(imgs1) != 0:  # 该人物未清空
             known_face_names1.append(name)
             known_face_imgs1.append(imgs1)
-            known_face_encodings1.append(known_face_encodings[i])
+            known_face_encodings1.append(list(known_face_encodings[i]))
 
     for webpath in mislead:  # mislead中去除不存在的照片
-        if not os.path.exists(relpath_from_webpath(webpath)):
+        if not relpath_from_webpath(webpath):
             mislead.remove(webpath)
 
-    if(len(known_face_names1)>0):
+    if len(known_face_names1)>0:
         with open(face_zip_path, 'wb') as file:  # 所有的更改写回文件
             faces_zip = [known_face_names1, known_face_encodings1, known_face_imgs1,mislead]
             pickle.dump(faces_zip, file)
@@ -94,13 +94,13 @@ def find(webpaths):
         image_path = relpath_from_webpath(webpath)
         # 加载图片
         t00 = datetime.now()
-        unknown_image = face_recognition.load_image_file(image_path)
+        # unknown_image = face_recognition.load_image_file(image_path)
         t10 += datetime.now() - t00
         count_checked += 1
 
         # 找到图中所有人脸的位置
         t00 = datetime.now()
-        face_locations = face_recognition.face_locations(unknown_image)
+        face_locations = face_recognition.face_locations(image_path)
         if (len(face_locations) == 0): mislead.append(webpath)
 
 
@@ -109,7 +109,7 @@ def find(webpaths):
 
         # 根据位置加载人脸编码的列表
         t00 = datetime.now()
-        face_encodings = face_recognition.face_encodings(unknown_image, face_locations)
+        face_encodings = face_recognition.face_encodings(image_path)
         t30 += datetime.now() - t00
 
         # 遍历所有人脸编码，与已知人脸对比
@@ -132,13 +132,13 @@ def find(webpaths):
                     id = id[0]
                     name = known_face_names[id]
                     print("(face) matched " + image_path + " : " + name)
-                    known_face_imgs[id].append((webpath, [left, top, right, bottom]))
+                    known_face_imgs[id].append([webpath, [left, top, right, bottom]])
             else:  # 不和当前已有人脸匹配
                 name = '未命名'
                 print('(face) find new person : ' + webpath)
                 known_face_names.append(name)
                 known_face_encodings.append(face_encoding)
-                known_face_imgs.append([(webpath, [left, top, right, bottom])])
+                known_face_imgs.append([[webpath, [left, top, right, bottom]]])
 
     with open(face_zip_path, 'wb') as file:
         faces_zip = [known_face_names, known_face_encodings, known_face_imgs, mislead]

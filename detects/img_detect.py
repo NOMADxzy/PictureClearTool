@@ -1,27 +1,24 @@
-import copy
-import pickle,sqlite3
-import time,yaml
-from PIL import Image, ImageDraw
+import pickle,sqlite3,cv2,time,yaml,os,math,sys,json
+from PIL import Image
+from pathlib import Path
 import numpy as np
 from flask import Blueprint,request,redirect
-import os,math
-import sys
-from pathlib import Path
-from tools.yolo import pre_boxs,draw_box,pre_dir
+
 from tools.general import PathDict,relpath_from_webpath,webpath_from_relpath,\
     thumbnail_from_webpath,HOST,get_tag,names,Tag,get_img_paths,is_screen_shot,webpath_belongto_dir,\
     TagGroup,get_img_detail,is_allowed_ext,executor,settings,info
-from tools.val import database_file_path,pathdict_file_path,cls_idx_base
-from detects.blur import compute_blur,CachedBlurImg,run_blur_detect
-import cv2
+from tools.val import database_file_path,cls_idx_base
+
+from tools.yolo import pre_boxs,pre_dir
+from detects.blur import compute_blur,CachedBlurImg
 from detects.face import known_face_names,known_face_imgs,get_paths ,avatars,find,generate_avatar
-from detects.ocr import read
+# from detects.ocr import read
+from remotes.RPC import ocrread,draw_box
 from tools.train_prepair import add_to_train
 
 
 #目标检测相关的api在这里
 detectapp = Blueprint('img_detect',__name__)
-
 
 
 FILE = Path(__file__).resolve()
@@ -218,21 +215,27 @@ def import_dir():
     #     web_dir = orig_dir + str(times)
     #     times += 1
 
-    rel_path = os.path.relpath(dir, Path.cwd())
-    PathDict[web_dir] = rel_path
+    # rel_path = os.path.relpath(dir, Path.cwd())
+    PathDict[web_dir] = dir
+    settings_table = sqlite3.connect(database_file_path)
+    cursor = settings_table.cursor()
+    cursor.execute('update Settings set value = ? where key = ?', (json.dumps(PathDict), 'PathDict'))
+    settings_table.commit()
+    settings_table.close()
 
     total = executor.submit(preparedir,web_dir)
     redirect('retrieval/index/'+web_dir)
 
-    with open(pathdict_file_path,'wb') as file:
-        pickle.dump(PathDict,file)
-        file.close()
+    # with open(pathdict_file_path,'wb') as file:
+    #     pickle.dump(PathDict,file)
+    #     file.close()
     return web_dir
 
 @detectapp.route('/ocr',methods=['GET'])
 def ocr():
     relpath = request.args['id']
-    result,float_left = read(relpath)
+    result = ocrread(relpath)
+    float_left = [False for i in range(len(result))]
     return {'result':result,'float_left':float_left}
 
 @detectapp.route('/thing',methods=['GET'])
@@ -282,8 +285,6 @@ def face():
 
             relpath = relpath_from_webpath(webpath)
             if not relpath:continue
-            print(len(known_face_names))
-            print(len(avatars))
             img = {
                 'id': relpath,
                 'index': num+j,

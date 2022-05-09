@@ -1,14 +1,14 @@
 # coding=UTF-8
-import copy
-
+import json
+import os, pickle, sqlite3
+# from send2trash import send2trash
+from flask_cors import CORS
 from flask import Flask, request, make_response,redirect
 from pathlib import Path
+from tools.val import database_file_path,PORT
 from tools.general import is_allowed_ext, get_thumbnail_pic, get_tag,settings, \
     HOST, PathDict, TagGroup, Tag, names, webpath_from_relpath, get_img_detail,get_img_paths,relpath_from_webpath
-from tools.val import database_file_path,pathdict_file_path,settings_file_path,PORT
-import os, pickle, sqlite3
-from send2trash import send2trash
-from flask_cors import CORS
+
 
 from retrieval.img_retrieval import retrievalapp
 from detects.img_detect import detectapp
@@ -19,21 +19,33 @@ app.register_blueprint(retrievalapp, url_prefix='/retrieval')#与检索相关的
 app.register_blueprint(detectapp, url_prefix='/detect')#与目标、模糊、截图、文字、人脸检测的接口
 
 # 初始，检查已注册的文件夹,只保留还存在的
-_PathDict = {}
+print('------------check_dir---------------')
+bad_dir = []
 for dir in PathDict:
     reldir = PathDict[dir]
-    if os.path.exists(reldir):
-        _PathDict[dir] = reldir
-    else:
-        print(dir + 'not exist anymore')
+    if not os.path.exists(reldir):
+        print(dir + 'not exist anymore(check dir)')
+        bad_dir.append(dir)
+
+
+for dir in bad_dir:
+    PathDict.pop(dir)
 
 
 # 获取、查看、删除图片等基本接口在这里
 @app.route('/', methods=['GET'])
 def hello():
     print(request.args)
-    return {'name':'image tool backend',
-            'pathdict':PathDict,'taggroup':TagGroup,'tag':Tag,'names':names}
+    settings_table = sqlite3.connect(database_file_path)
+    cursor = settings_table.cursor()
+    for key in settings:
+        cursor.execute('update Settings set value = ? where key = ?', (json.dumps(settings[key]), key))
+    settings_table.commit()
+    settings_table.close()
+    return {'service':'image tool backend',
+            'settings':settings,'taggroup':TagGroup,
+            'tag':Tag,}
+
 
 @app.route('/get_abspath', methods=['GET'])
 def get_abspath():
@@ -45,6 +57,7 @@ def get_abspath():
 @app.route('/get_pics/<path:webdir>', methods=['GET'])
 def get_pics(webdir, baseindex=0):
     if(webdir=='') : return redirect('/get_all_pics')
+    print(PathDict)
     if not webdir in PathDict or not os.path.isdir(PathDict[webdir]):
         print(webdir + '(get_pics) dir not exist')
         imgs = []
@@ -203,7 +216,7 @@ def deletetags(webpaths,osremove=False):
                 tags.append(names.index(tag_name))# 转成序号
         for tag in tags:
             if(path in TagGroup[tag]):TagGroup[tag].remove(path)
-        if osremove: send2trash(relpath)  # 文件删除
+        if osremove: os.remove(relpath)  # 文件删除
         if (path in Tag): Tag.pop(path)  # Tag表中删除
     print('current tag group size: ' + str(len(TagGroup[0])))
     if (len(paths) > 0):
@@ -231,9 +244,14 @@ def del_dir():
     deletetags(paths,osremove=False)
     # os.remove(PathDict[dir] + '/.thumbnails')#删除缩略图缓存
     PathDict.pop(dir)
-    with open(pathdict_file_path,'wb') as file:
-        pickle.dump(PathDict,file)
-        file.close()
+    # with open(pathdict_file_path,'wb') as file:
+    #     pickle.dump(PathDict,file)
+    #     file.close()
+    settings_table = sqlite3.connect(database_file_path)
+    cursor = settings_table.cursor()
+    cursor.execute('update Settings set value = ? where key = ?',(json.dumps(PathDict),'PathDict'))
+    settings_table.commit()
+    settings_table.close()
     return 'done',200
 
 @app.route('/setting', methods=['POST','GET'])
@@ -245,10 +263,17 @@ def setting():
     val = request.json['val']
     # if not type in settings: return 'error',400
     settings[type] = val
+    settings_table = sqlite3.connect(database_file_path)
+    cursor = settings_table.cursor()
+    cursor.execute('update Settings set value = ? where key = ?', (json.dumps(val), type))
+    settings_table.commit()
+    settings_table.close()
 
-    with open(settings_file_path, 'wb') as file:
-        pickle.dump(settings,file)
-        file.close()
+
+
+    # with open(settings_file_path, 'wb') as file:
+    #     pickle.dump(settings,file)
+    #     file.close()
     return 'ok',200
 
 

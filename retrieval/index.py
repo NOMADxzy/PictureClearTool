@@ -1,18 +1,12 @@
 # -*- coding: utf-8 -*-
-# Author: yongyuan.name
-# python index.py -database database -index featureCNN.h5
-# python query_online.py -query ant.jpg -index featureCNN.h5 -result database
-import os, _thread
-import time
 
-import h5py
+import os, _thread,time,h5py,ssl
 import numpy as np
-import argparse
 
-from retrieval.extract_cnn_vgg16_keras import VGGNet
-from tools.general import relpath_from_webpath, PathDict, is_allowed_ext, executor
+from tools.general import relpath_from_webpath, PathDict, is_allowed_ext, executor,get_img_paths
 from tools.val import retrieval_file_path
-import ssl
+
+from remotes.RPC import extract_feat
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -47,7 +41,7 @@ def purify_feature():
     names1,feats1 = [],[]
     for i, webpath in enumerate(names):
         relpath = relpath_from_webpath(webpath)
-        if (not (relpath and os.path.exists(relpath))):
+        if not relpath:
             print('(retrieval) remove ' + webpath)
         else:
             names1.append(webpath)
@@ -64,15 +58,14 @@ def purify_feature():
 
 def index_dir(webdir):
     relpath = PathDict[webdir]
-    if (not os.path.isdir(relpath)):
+    if not os.path.isdir(relpath):
         print('(retrieval) ' + webdir + ' 文件夹不存在')
 
-    model = VGGNet()
-    img_list = get_imlist(relpath)
+    img_list = get_img_paths(relpath)
     for i, img_path in enumerate(img_list):
         img_name = webdir + '/' + os.path.split(img_path)[1]
         if (img_name in names): continue
-        norm_feat = model.extract_feat(img_path)
+        norm_feat = extract_feat(img_path)
         feats.append(norm_feat)
         names.append(img_name)
         print("(retrieval) extracting feature from image No. %d ," + img_name + "; " + str(i + 1))
@@ -106,9 +99,8 @@ if __name__ == "__main__":
     feats = []
     names = []
 
-    model = VGGNet()
     for i, img_path in enumerate(img_list):
-        norm_feat = model.extract_feat(img_path)
+        norm_feat = extract_feat(img_path)
         img_name = os.path.split(img_path)[1]
         feats.append(norm_feat)
         names.append(img_name)

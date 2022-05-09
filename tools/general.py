@@ -1,42 +1,17 @@
+import json
 import os,sqlite3
 from PIL import Image
 import pickle,sqlite3,re
 import time,yaml
 from concurrent.futures import ThreadPoolExecutor
-from tools.val import pathdict_file_path,settings_file_path,database_file_path,PORT
+from tools.val import database_file_path,PORT
 
 
 executor = ThreadPoolExecutor()
 
-# 加载设置信息（阈值等）
-
-if(os.path.exists(settings_file_path)):
-    with open(settings_file_path, 'rb') as file:
-        settings = pickle.load(file)
-        file.close()
-else: settings = {'blur':70,'face':0.5,'rela':0.75,'weight':'中','mincandicates':5}
-
-# 加载注册的文件夹
-PathDict = {}
-if(os.path.exists(pathdict_file_path)):
-    with open(pathdict_file_path,'rb') as file:
-        PathDict = pickle.load(file)
-        file.close()
-
-
-HOST = 'http://127.0.0.1:'+str(PORT)+'/'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg','webp','bmp','dng'}#判断格式正确
-
-#加载tag名称
-
-detect = sqlite3.connect(database_file_path)
-cursor = detect.cursor()
-cursor.execute('select * from Settings where key = ?',('names',))
-r = cursor.fetchone()
-if r:
-    names = pickle.loads(r[1])
-else:
-    names= ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
+# 加载设置信息（阈值等）,注册的文件夹等
+settings = {'blur':70,'face':0.45,'rela':0.75,'weight':'中','mincandicates':5,'PathDict':{},
+            'names':['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
         'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
         'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
         'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard',
@@ -45,10 +20,60 @@ else:
         'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
         'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear',
         'hair drier', 'toothbrush',
-        'paper','projector','classroom','building','road','screenshot','tree','grassland','mountain','qrcode']
-    cursor.execute('insert into Settings values (?,?)', ('names',pickle.dumps(names)))
-    detect.commit()
-detect.close()
+        'paper','projector','classroom','building','road','screenshot','tree','grassland','mountain','qrcode']}#默认的
+# if(os.path.exists(settings_file_path)):
+    # with open(settings_file_path, 'rb') as file:
+    #     settings = pickle.load(file)
+    #     file.close()
+settings_table = sqlite3.connect(database_file_path)
+cursor = settings_table.cursor()
+cursor.execute('select * from Settings')
+result = cursor.fetchall()
+for key,value in result:
+    settings[key] = json.loads(value)
+
+PathDict = settings['PathDict']
+names = settings['names']
+
+
+settings_table.commit()
+settings_table.close()
+
+
+# 加载注册的文件夹
+# PathDict = {}
+# if(os.path.exists(pathdict_file_path)):
+#     with open(pathdict_file_path,'rb') as file:
+#         PathDict = pickle.load(file)
+#         file.close()
+
+
+
+HOST = 'http://127.0.0.1:'+str(PORT)+'/'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg','webp','bmp','dng'}#判断格式正确
+
+#加载tag名称
+
+# detect = sqlite3.connect(database_file_path)
+# cursor = detect.cursor()
+# cursor.execute('select * from Settings where key = ?',('names',))
+# r = cursor.fetchone()
+# if r:
+#     names = json.loads(r[1])
+# else:
+#     names= ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
+#         'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
+#         'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
+#         'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard',
+#         'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+#         'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch',
+#         'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
+#         'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear',
+#         'hair drier', 'toothbrush',
+#         'paper','projector','classroom','building','road','screenshot','tree','grassland','mountain','qrcode']
+#     cursor.execute('insert into Settings values (?,?)', ('names',json.dumps(names)))
+#     detect.commit()
+# detect.close()
 
 Tag,TagGroup = {},{}
 #Tag:{webpath:[boxs,tags]...}
@@ -111,10 +136,11 @@ def get_thumbnail_pic(path):#生成单张图片或文件夹下所有图片的缩
                 img.thumbnail((300, 300))
                 img.save(name, 'PNG')
 
+
 def relpath_from_webpath(webpath):#webpath 转成系统相对路径relpath
     pathsplited = webpath.rsplit('/',1)
-    if(pathsplited[0] not in PathDict):
-        print('rel_from_web dir not exist')
+    if pathsplited[0] not in PathDict:
+        print(pathsplited[0]+' not exist any more(rel_from_web)')
         return False
     else:
         relpath = PathDict[pathsplited[0]]+'/'+ pathsplited[1]

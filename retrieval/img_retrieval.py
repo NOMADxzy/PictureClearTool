@@ -1,20 +1,18 @@
+import os,sqlite3
 from flask import Blueprint,request
+import numpy as np
 
-from retrieval.extract_cnn_vgg16_keras import VGGNet
 from tools.general import relpath_from_webpath,thumbnail_from_webpath,get_tag,HOST,webpath_belongto_dir,\
     get_thumbnail_pic,get_img_detail,executor,settings,webpath_from_relpath
 from tools.val import database_file_path
-import numpy as np
-from retrieval.index import names,feats,index_dir
-import h5py
-import os,sqlite3
-import json
-from pathlib import Path
+
+from retrieval.index import names,feats,index_dir,extract_feat
+
+
 #检索图片相关的api在这里
 retrievalapp = Blueprint('img_retrieval',__name__)
 
 
-model = VGGNet()
 
 @retrievalapp.route('/index/<path:dir>',methods=['GET'])
 def index(dir):
@@ -37,7 +35,7 @@ def retrieval():
     print('img retrieval thres = ' + str(threshold))
     query = request.json['query']#目标图片的相对路径
     print('query img '+query +' min= '+str(min_res)+' thres = ' + str(threshold))
-    qvec = model.extract_feat(query)
+    qvec = extract_feat(query)
     scores = np.dot(qvec,np.asarray(feats).T)
     ranked_idx = np.argsort(scores)[::-1]
 

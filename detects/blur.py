@@ -1,7 +1,7 @@
+import argparse,_thread,cv2,pickle,os,sqlite3
 import numpy as np
 from imutils import paths
-import argparse,_thread
-import cv2,pickle,os,sqlite3
+
 from tools.general import get_img_paths,PathDict,webpath_from_relpath,\
     settings,relpath_from_webpath
 from tools.val import database_file_path
