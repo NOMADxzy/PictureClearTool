@@ -30,4 +30,5 @@ class VGGNet:
         img = preprocess_input(img)
         feat = self.model.predict(img)
         norm_feat = feat[0]/LA.norm(feat[0])
+        norm_feat = [float(f) for f in norm_feat]
         return norm_feat

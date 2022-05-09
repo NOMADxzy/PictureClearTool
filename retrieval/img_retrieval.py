@@ -66,6 +66,16 @@ def retrieval():
     # if(relpath_from_webpath(candicates[0][0])==query): candicates = candicates[1:]
     detect.close()
     return {'num':num,'candicates':candicates}
+
+
+#获取指定图片的清晰度
+def get_fm(webpath):
+    blur_res = sqlite3.connect(database_file_path)
+    cursor = blur_res.cursor()
+    cursor.execute('select fm from blur where webpath = ?',(webpath,))
+    fm = cursor.fetchone()[0]
+    return fm
+
 @retrievalapp.route('/cpt_all/<path:dir>',methods=['GET','POST'])
 def cpt_all(dir):
     thre = settings['rela']
@@ -102,12 +112,13 @@ def cpt_all(dir):
             rela_imgs.append([])
         if(relpath_from_webpath(names1[arg[1]]) and os.path.exists(relpath_from_webpath(names1[arg[1]]))):#该图片存在
             if filt:#指定文件夹的相似图片
-                if names1[arg[1]][0:dir_len]==dir: rela_imgs[cur].append((names1[arg[1]],mat[arg[0],arg[1]]))
+                if names1[arg[1]][0:dir_len]==dir:
+                    rela_imgs[cur].append((names1[arg[1]],mat[arg[0],arg[1]],get_fm(names1[arg[1]])))
                 #不需要指定文件夹的相似图片
-            else: rela_imgs[cur].append((names1[arg[1]],mat[arg[0],arg[1]]))
+            else: rela_imgs[cur].append((names1[arg[1]],mat[arg[0],arg[1]],get_fm(names1[arg[1]])))
 
 
-    #删除图片数不足两张的
+    #删除图片数不足两张的,组内按清晰度排序
     purifed_imgs,num = [],0
     for img_list in rela_imgs:
         length = len(img_list)
@@ -123,7 +134,8 @@ def cpt_all(dir):
                 'tags':get_tag(img_score[0]),
                 'checked':not i==0,
                 'details': get_img_detail(relpath_from_webpath(img_score[0]),cursor),
-                'score':img_score[1]
+                'score':img_score[1],
+                'fm':img_score[2]
             } for i,img_score in enumerate(img_list)]
             purifed_imgs.append(img_list)
             num+=length
