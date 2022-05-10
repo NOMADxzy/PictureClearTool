@@ -7,7 +7,7 @@ if not os.path.exists(database_file_path):
     cursor = detects.cursor()
     cursor.execute('''CREATE TABLE detail
     (
-    	relpath
+    	webpath
     		primary key,
     	details BLOB not null
     );
@@ -31,7 +31,8 @@ if not os.path.exists(database_file_path):
     cursor.execute('''CREATE TABLE blur
         (
         	webpath text,
-        	fm integer
+        	fm integer,
+        	ft BLOB
         );''')
     detects.commit()
     detects.close()
