@@ -6,8 +6,12 @@ from tools.general import relpath_from_webpath,thumbnail_from_webpath,get_tag,HO
     get_thumbnail_pic,get_img_detail,executor,settings,webpath_from_relpath
 from tools.val import database_file_path
 
-from retrieval.index import names,feats,index_dir,extract_feat
+# from retrieval.index import names,feats,index_dir,extract_feat
+from remotes.RPC import extract_feat
+from detects.blur import imageFeatures
 
+# imageFeatures = ImageFeatures()
+names,feats = imageFeatures.names,imageFeatures.feats
 
 #检索图片相关的api在这里
 retrievalapp = Blueprint('img_retrieval',__name__)
@@ -17,7 +21,7 @@ retrievalapp = Blueprint('img_retrieval',__name__)
 @retrievalapp.route('/index/<path:dir>',methods=['GET'])
 def index(dir):
     print('computing new dir vgg feature')
-    total = executor.submit(index_dir,dir)
+    # total = executor.submit(index_dir,dir)
     return 'ok',200
 
 @retrievalapp.route('/',methods=['POST','GET'])
@@ -56,7 +60,7 @@ def retrieval():
               'thumbnail': HOST + thumbnail_from_webpath(webpath),
               'original': HOST + webpath,
               'score':score,
-              'details': get_img_detail(relpath,cursor),
+              'details': get_img_detail(webpath,cursor),
               'tags': get_tag(webpath)}
         if(im['id']==query): continue
         candicates.append(im)#去掉同一图片
@@ -76,6 +80,8 @@ def get_fm(webpath):
 
 @retrievalapp.route('/cpt_all/<path:dir>',methods=['GET','POST'])
 def cpt_all(dir):
+    print(names)
+    print(len(feats))
     thre = settings['rela']
     names0 = names
     if request.method == 'POST':
@@ -131,7 +137,7 @@ def cpt_all(dir):
                 # 'original': 'atom:///' + relpath_from_webpath(img_score[0]),
                 'tags':get_tag(img_score[0]),
                 'checked':not i==0,
-                'details': get_img_detail(relpath_from_webpath(img_score[0]),cursor),
+                'details': get_img_detail(img_score[0],cursor),
                 'score':img_score[1],
                 'fm':img_score[2]
             } for i,img_score in enumerate(img_list)]

@@ -4,7 +4,7 @@ import os, _thread,time,h5py,ssl
 import numpy as np
 
 from tools.general import relpath_from_webpath, PathDict, is_allowed_ext, executor,get_img_paths
-from tools.val import retrieval_file_path
+from tools.val import retrieval_file_path,database_file_path
 
 from remotes.RPC import extract_feat
 
@@ -13,15 +13,15 @@ ssl._create_default_https_context = ssl._create_unverified_context
 feat_path = retrieval_file_path
 # 读取图片特征库
 names,feats = [],[]
-if os.path.exists(feat_path):
-    if(os.path.getsize(feat_path)<100):
-        os.remove(feat_path)
-    else:
-        h5_file = h5py.File(retrieval_file_path, 'r')
-        feats = h5_file['feats'][:].tolist()
-        names = h5_file['names'][:]
-        names = [e.decode() for e in names]
-        h5_file.close()
+# if os.path.exists(feat_path):
+#     if(os.path.getsize(feat_path)<100):
+#         os.remove(feat_path)
+#     else:
+#         h5_file = h5py.File(retrieval_file_path, 'r')
+#         feats = h5_file['feats'][:].tolist()
+#         names = h5_file['names'][:]
+#         names = [e.decode() for e in names]
+#         h5_file.close()
 
 '''
  Returns a list of filenames for all jpg images in a directory. 

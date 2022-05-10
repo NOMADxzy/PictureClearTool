@@ -167,15 +167,18 @@ def webpath_belongto_dir(webpath,dir):
     pathsplited = webpath.rsplit('/', 1)
     return webpath[0:len(dir)] == dir
 
-def get_img_detail(relpath,cursor):
+def get_img_detail(webpath,cursor):
+    relpath = relpath_from_webpath(webpath)
+    if not relpath: return None
     import time
-    cursor.execute('select * from detail where relpath = ?',(relpath,))
+
+    cursor.execute('select * from detail where webpath = ?',(webpath,))
     res = cursor.fetchone()
     if(res):
         r,detail_dump = res
         return pickle.loads(detail_dump)
-    else: print(str(relpath) + ' detail not in database')
-    if(not relpath or not os.path.exists(relpath)) : return None
+    else: print(str(webpath) + ' detail not in database')
+
     img = Image.open(relpath)
     info = img._getexif()
     size = os.path.getsize(relpath)
@@ -189,7 +192,7 @@ def get_img_detail(relpath,cursor):
 
     # resolution = str(img.size[0]) + 'x' + str(img.size[1])
     detail = [size,date_and_time[0], img.size,date_and_time[1]]
-    cursor.execute('insert into detail values (?,?)',(relpath,pickle.dumps(detail)))
+    cursor.execute('insert into detail values (?,?)',(webpath,pickle.dumps(detail)))
     return detail
 
 

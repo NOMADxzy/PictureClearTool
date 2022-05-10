@@ -10,8 +10,10 @@ from tools.general import PathDict,relpath_from_webpath,webpath_from_relpath,\
 from tools.val import database_file_path,cls_idx_base
 
 from tools.yolo import pre_boxs,pre_dir
-from detects.blur import compute_blur,CachedBlurImg
-from detects.face import known_face_names,known_face_imgs,get_paths ,avatars,find,generate_avatar
+# from detects.blur import compute_blur,CachedBlurImg
+from detects.blur import imageFeatures
+from detects.face import known_face_names,known_face_imgs,get_paths ,avatars,\
+    find,generate_avatar,make_avatar
 # from detects.ocr import read
 from remotes.RPC import ocrread,draw_box
 from tools.train_prepair import add_to_train
@@ -19,6 +21,10 @@ from tools.train_prepair import add_to_train
 
 #目标检测相关的api在这里
 detectapp = Blueprint('img_detect',__name__)
+
+# imageFeatures = ImageFeatures()
+compute_blur = imageFeatures.compute_blur
+CachedBlurImg = imageFeatures.CachedBlurImg
 
 
 FILE = Path(__file__).resolve()
@@ -32,7 +38,7 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 @detectapp.route('/',methods=['POST'])
 def detect():
     relpath = request.json['source']
-    print(relpath)
+    # print(relpath)
     if(is_allowed_ext(relpath)):
         pre_res = pre_boxs(source=relpath)
     img0 = cv2.imread(relpath)
@@ -83,7 +89,7 @@ def search(tag_name):
               'webpath': img,
               'thumbnail': HOST + thumb_img,
               'original': HOST + img,
-              'details': get_img_detail(root + '/' + img_splited[1],cursor),
+              'details': get_img_detail(img,cursor),
               'tags': get_tag(img)}
         imgs_pack.append(im)
         num+=1
@@ -263,7 +269,7 @@ def thing():
                   'original': HOST + webpath,
                   'name': names[id],
                   'avatar':HOST+thumbnail_from_webpath(webpath),
-                  'details': get_img_detail(relpath,cursor),
+                  'details': get_img_detail(webpath,cursor),
                   'tags': get_tag(webpath)}
             ims.append(im)
         num += len(ims)
@@ -282,6 +288,7 @@ def face():
         group = []
         for j,im in enumerate(known_face_imgs[i]):
             webpath,pos = im
+            avatar_path = make_avatar(webpath,pos)
 
             relpath = relpath_from_webpath(webpath)
             if not relpath:continue
@@ -294,15 +301,16 @@ def face():
                 # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
                 'tags': get_tag(webpath),
                 'name':personname,
-                'details': get_img_detail(relpath,cursor),
-                'avatar':HOST+avatars[i]
+                'details': get_img_detail(webpath,cursor),
+                'avatar':HOST+avatar_path
             }
             group.append(img)
+        if len(group)==0: continue
         imgs.append(group)
         personnames.append(personname)
         num += len(group)
     detect.close()
-    return {'names':personnames,'imgs':imgs}
+    return {'names':personnames,'imgs':imgs,'num':num}
 
 @detectapp.route('/blur_detect/<path:dir>',methods=['GET'])
 def blur_detect(dir):
@@ -324,7 +332,7 @@ def blur_detect(dir):
                 'webpath': webpath,
                  'thumbnail': HOST + thumbnail_from_webpath(webpath),
                  'original':HOST + webpath,
-                'details': get_img_detail(relpath,cursor),
+                'details': get_img_detail(webpath,cursor),
                  # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
                  'tags': get_tag(webpath),
                  'ft':ft
@@ -354,7 +362,7 @@ def screenshot(dir):
                     'thumbnail': HOST + '/'+webdir+'/.thumbnail/'+file,
                     'original': HOST + '/'+webdir+'/'+file,
                     'tags': get_tag(webdir+'/'+file),
-                    'details': get_img_detail(relpath,cursor),
+                    'details': get_img_detail(webdir+'/'+file,cursor),
                 }
                 imgs.append(img)
                 num += 1
@@ -378,7 +386,7 @@ def fat(dir):
             for file in files:
                 if not is_allowed_ext(file): continue
 
-                details = get_img_detail(root+'/'+file,cursor)
+                details = get_img_detail(webdir+'/'+file,cursor)
                 size_group = 0
                 if details[0]<102400: size_group=0
                 elif details[0]<1024*1024: size_group=1
@@ -444,9 +452,10 @@ def class_clear():
             img = {
                 'id': relpath,
                 'index': num,
+                'webpath':webpath,
                 'thumbnail': HOST + thumbnail_from_webpath(webpath),
                 'original': HOST + webpath,
-                'details': get_img_detail(relpath, cursor),
+                'details': get_img_detail(webpath, cursor),
                 # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
                 'tags': get_tag(webpath),
                 'ft': img_fm[1]
@@ -463,7 +472,7 @@ def class_clear():
             'webpath': webpath,
             'thumbnail': HOST + thumbnail_from_webpath(webpath),
             'original': HOST + webpath,
-            'details': get_img_detail(path, cursor),
+            'details': get_img_detail(webpath, cursor),
             # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
             'tags': get_tag(webpath),
         }

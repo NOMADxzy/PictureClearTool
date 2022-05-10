@@ -156,6 +156,20 @@ def find(webpaths):
         # print('compare_faces   time: %d seconds, %d microseconds.' % (t40.seconds, t40.microseconds))
         # print('shutil.copy     time: %d seconds, %d microseconds.' % (t50.seconds, t50.microseconds))
 
+def make_avatar(webpath,pos):
+    import uuid
+    path_pre = 'temp/avatar/'
+    relpath = relpath_from_webpath(webpath)
+    if not relpath:
+        print('make_avatar fail '+webpath)
+        return None
+    avatar = Image.open(relpath)
+    avatar = avatar.crop(pos)
+    avatar_path = path_pre+str(uuid.uuid1())+'.png'
+    avatar.save(avatar_path)
+    return avatar_path
+
+
 
 def generate_avatar():
     paths = get_img_paths('temp/avatar/')
@@ -186,7 +200,7 @@ def run():
     paths = get_paths()
     find(paths)  # 匹配所有新增的人脸照片
     print('find person num '+ str(known_face_names))
-    generate_avatar()
+    # generate_avatar()
     print('face process stand by')
 
 executor.submit(run)

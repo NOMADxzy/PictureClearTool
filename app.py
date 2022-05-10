@@ -1,22 +1,25 @@
 # coding=UTF-8
 import json
-import os, pickle, sqlite3
+import os, pickle, sqlite3, sys, traceback, gc, atexit
+import multiprocessing
+import time
+import sys
+from signal import signal, SIGTERM, SIGKILL, SIGQUIT, SIGHUP
 # from send2trash import send2trash
 from flask_cors import CORS
-from flask import Flask, request, make_response,redirect
+from flask import Flask, request, make_response, redirect
 from pathlib import Path
-from tools.val import database_file_path,PORT
-from tools.general import is_allowed_ext, get_thumbnail_pic, get_tag,settings, \
-    HOST, PathDict, TagGroup, Tag, names, webpath_from_relpath, get_img_detail,get_img_paths,relpath_from_webpath
-
+from tools.val import database_file_path, PORT,LISTEN_HOST
+from tools.general import is_allowed_ext, get_thumbnail_pic, get_tag, settings, \
+    HOST, PathDict, TagGroup, Tag, names, webpath_from_relpath, get_img_detail, get_img_paths, relpath_from_webpath
 
 from retrieval.img_retrieval import retrievalapp
 from detects.img_detect import detectapp
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
-app.register_blueprint(retrievalapp, url_prefix='/retrieval')#与检索相关的接口
-app.register_blueprint(detectapp, url_prefix='/detect')#与目标、模糊、截图、文字、人脸检测的接口
+app.register_blueprint(retrievalapp, url_prefix='/retrieval')  # 与检索相关的接口
+app.register_blueprint(detectapp, url_prefix='/detect')  # 与目标、模糊、截图、文字、人脸检测的接口
 
 # 初始，检查已注册的文件夹,只保留还存在的
 print('------------check_dir---------------')
@@ -26,7 +29,6 @@ for dir in PathDict:
     if not os.path.exists(reldir):
         print(dir + 'not exist anymore(check dir)')
         bad_dir.append(dir)
-
 
 for dir in bad_dir:
     PathDict.pop(dir)
@@ -42,9 +44,9 @@ def hello():
         cursor.execute('update Settings set value = ? where key = ?', (json.dumps(settings[key]), key))
     settings_table.commit()
     settings_table.close()
-    return {'service':'image tool backend',
-            'settings':settings,'taggroup':TagGroup,
-            'tag':Tag,}
+    return {'service': 'image tool backend',
+            'settings': settings, 'taggroup': TagGroup,
+            'tag': Tag, }
 
 
 @app.route('/get_abspath', methods=['GET'])
@@ -56,14 +58,14 @@ def get_abspath():
 # 获取指定文件夹下的图片
 @app.route('/get_pics/<path:webdir>', methods=['GET'])
 def get_pics(webdir, baseindex=0):
-    if(webdir=='') : return redirect('/get_all_pics')
-    print(PathDict)
+    if (webdir == ''): return redirect('/get_all_pics')
+
     if not webdir in PathDict or not os.path.isdir(PathDict[webdir]):
         print(webdir + '(get_pics) dir not exist')
         imgs = []
         return {'total': 0, 'imgs': imgs}
     root = PathDict[webdir]
-    print('get pics from '+root)
+    print('get pics from ' + root)
     detect = sqlite3.connect(database_file_path)  # 连接数据库
     cursor = detect.cursor()
     # baseindex#用于get_all_pics的index矫正
@@ -80,12 +82,12 @@ def get_pics(webdir, baseindex=0):
             tag = get_tag(webdir + '/' + file)
             img = {'id': root + '/' + file,
                    'index': num + baseindex,
-                   'webpath':webdir + '/' + file,
+                   'webpath': webdir + '/' + file,
                    'thumbnail': HOST + webdir + '/.thumbnail/' + file,
                    # 'thumbnail': 'atom:///'+root+'/.thumbnail/'+file,
                    # 'original': 'atom:///'+root+'/'+file,
-                   'original':HOST + webdir + '/' + file,
-                   'details': get_img_detail(root + '/' + file,cursor),
+                   'original': HOST + webdir + '/' + file,
+                   'details': get_img_detail(webdir + '/' + file, cursor),
                    # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
                    'tags': tag}
             hits.append(img)
@@ -106,7 +108,8 @@ def get_all_pics():
         total += res['total']
         imgs += res['imgs']
         imgsdict[web_dir] = res['imgs']
-    return {'total': total, 'imgs': imgs,'imgsdict':imgsdict}
+    return {'total': total, 'imgs': imgs, 'imgsdict': imgsdict}
+
 
 @app.route('/<path:dir>/<path:file>', methods=['GET'])
 def show_photo(dir, file):
@@ -131,21 +134,22 @@ def show_photo(dir, file):
 def deletefiles():
     webpaths = list(set(request.json['paths']))
     relpaths = [relpath_from_webpath(webpath) for webpath in webpaths]
-    print('remove '+str(webpaths))
-    deletetags(webpaths,osremove=True)
+    print('remove ' + str(webpaths))
+    deletetags(webpaths, osremove=True)
 
     detect = sqlite3.connect(database_file_path)
     cursor = detect.cursor()
     size = 0
-    for relpath in relpaths:
-        size += get_img_detail(relpath,cursor)[0]
-    return {'num':str(len(webpaths)),'size':[size]}, 200
+    for webpath in webpaths:
+        size += get_img_detail(webpath, cursor)[0]
+    return {'num': str(len(webpaths)), 'size': [size]}, 200
 
-@app.route('/add_to_del', methods=['POST','GET'])
+
+@app.route('/add_to_del', methods=['POST', 'GET'])
 def add_to_del():
     detect = sqlite3.connect(database_file_path)
     cursor = detect.cursor()
-    if(request.method=='POST'):
+    if (request.method == 'POST'):
         webpaths = list(set(request.json['paths']))
         print('move out del_list ' + str(webpaths))
         s = str(webpaths)[1:-1]
@@ -156,48 +160,50 @@ def add_to_del():
 
     webpath = request.args['path']
     val = request.args['val']
-    cursor.execute('update TagTable set del = ? where path = ?',(val,webpath))
+    cursor.execute('update TagTable set del = ? where path = ?', (val, webpath))
     detect.commit()
     detect.close()
-    return 'done',200
+    return 'done', 200
+
 
 @app.route('/get_del', methods=['GET'])
 def get_del():
     detect = sqlite3.connect(database_file_path)
     cursor = detect.cursor()
 
-    imgs,total,num = [],0,0
+    imgs, total, num = [], 0, 0
     cursor.execute('select path from TagTable where del = 1')
     result = cursor.fetchall()
     if result is None:
-        return {'imgs':imgs,'total':total}
+        return {'imgs': imgs, 'total': total}
 
     for webpath in result:
         webpath = webpath[0]
-        webdir,file = webpath.split('/')
+        webdir, file = webpath.split('/')
         root = PathDict[webdir]
-        thumb_rel_path = root+'/.thumbnail/'+file
+        thumb_rel_path = root + '/.thumbnail/' + file
         if (not os.path.exists(thumb_rel_path)):  # 缩略图不存在,生成缩略图
             get_thumbnail_pic(root + '/' + file)
 
         tag = get_tag(webdir + '/' + file)
         img = {'id': root + '/' + file,
-               'index': num ,
+               'index': num,
                'webpath': webdir + '/' + file,
                'thumbnail': HOST + webdir + '/.thumbnail/' + file,
                # 'thumbnail': 'atom:///'+root+'/.thumbnail/'+file,
                # 'original': 'atom:///'+root+'/'+file,
                'original': HOST + webdir + '/' + file,
-               'details': get_img_detail(root + '/' + file, cursor),
+               'details': get_img_detail(webdir + '/' + file, cursor),
                # 'webformatURL': HOST+'data/images/'+'IMG20170819123559.jpg',
                'tags': tag}
         imgs.append(img)
         num += 1
     detect.commit()
     detect.close()
-    return {'imgs':imgs,'total':num}
+    return {'imgs': imgs, 'total': num}
 
-def deletetags(webpaths,osremove=False):
+
+def deletetags(webpaths, osremove=False):
     detect = sqlite3.connect(database_file_path)
     cursor = detect.cursor()
     paths = webpaths
@@ -213,15 +219,17 @@ def deletetags(webpaths,osremove=False):
         tags = []
         for tag_name in tag_names:
             if tag_name in names:
-                tags.append(names.index(tag_name))# 转成序号
+                tags.append(names.index(tag_name))  # 转成序号
         for tag in tags:
-            if(path in TagGroup[tag]):TagGroup[tag].remove(path)
+            if (path in TagGroup[tag]): TagGroup[tag].remove(path)
         if osremove: os.remove(relpath)  # 文件删除
         if (path in Tag): Tag.pop(path)  # Tag表中删除
     print('current tag group size: ' + str(len(TagGroup[0])))
     if (len(paths) > 0):
         s = str(paths)[1:-1]
         cursor.execute("delete from TagTable where path in (" + s + ")")
+        cursor.execute("delete from blur where webpath in (" + s + ")")
+        cursor.execute("delete from detail where webpath in (" + s + ")")
     for tag in TagGroup:
         cursor.execute("""update TagGroupTable set imgs = ? where tag = ?""", (pickle.dumps(TagGroup[tag]), tag))
     detect.commit()
@@ -233,15 +241,13 @@ def get_dirs():
     return {'dirs': list(PathDict.keys())}
 
 
-
-
 @app.route('/del_dir', methods=['GET'])
 def del_dir():
     # dir = request.json['dir']
     dir = request.args['dir']
-    if(dir not in PathDict): return 'not exist',202
-    paths = get_img_paths(dir=PathDict[dir],webpath=dir)#获取所有的webpaths
-    deletetags(paths,osremove=False)
+    if (dir not in PathDict): return 'not exist', 202
+    paths = get_img_paths(dir=PathDict[dir], webpath=dir)  # 获取所有的webpaths
+    deletetags(paths, osremove=False)
     # os.remove(PathDict[dir] + '/.thumbnails')#删除缩略图缓存
     PathDict.pop(dir)
     # with open(pathdict_file_path,'wb') as file:
@@ -249,14 +255,15 @@ def del_dir():
     #     file.close()
     settings_table = sqlite3.connect(database_file_path)
     cursor = settings_table.cursor()
-    cursor.execute('update Settings set value = ? where key = ?',(json.dumps(PathDict),'PathDict'))
+    cursor.execute('update Settings set value = ? where key = ?', (json.dumps(PathDict), 'PathDict'))
     settings_table.commit()
     settings_table.close()
-    return 'done',200
+    return 'done', 200
 
-@app.route('/setting', methods=['POST','GET'])
+
+@app.route('/setting', methods=['POST', 'GET'])
 def setting():
-    if request.method=='GET':
+    if request.method == 'GET':
         return settings
     print(request.json)
     type = request.json['type']
@@ -265,18 +272,67 @@ def setting():
     settings[type] = val
     settings_table = sqlite3.connect(database_file_path)
     cursor = settings_table.cursor()
-    cursor.execute('update Settings set value = ? where key = ?', (json.dumps(val), type))
+    cursor.execute('select * from Settings where key = ?',(type,))
+    r = cursor.fetchone()
+    if r is None:
+        cursor.execute('insert into Settings values(?,?)',(type,json.dumps(val)))
+    else:
+        cursor.execute('update Settings set value = ? where key = ?', (json.dumps(val), type))
     settings_table.commit()
     settings_table.close()
-
-
 
     # with open(settings_file_path, 'wb') as file:
     #     pickle.dump(settings,file)
     #     file.close()
-    return 'ok',200
+    return 'ok', 200
 
+
+this = os.path.abspath(os.path.dirname(__file__))
+module = os.path.split(this)[0]
+sys.path.append(module)
+
+
+def delMEI():
+    for index, path in enumerate(sys.path):
+        basename = os.path.basename(path)
+        if not basename.startswith("_MEI"):
+            continue
+
+        drive = os.path.splitdrive(path)[0]
+        if "" == drive:
+            path = os.getcwd() + "\\" + path
+            path = path.replace("\\\\", "\\")
+
+        if os.path.isdir(path):
+            try:
+                print("remove", path)
+                os.remove(path)
+            except:
+                pass
+            finally:
+                break
+
+
+def before_exit(*args):  # 退出程序前删除临时文件夹
+    delMEI()
+    sys.exit(0)  # don't forget to exit!
+
+
+def run():
+    signal(SIGQUIT, before_exit)
+    signal(SIGTERM, before_exit)
+    signal(SIGHUP, before_exit)
+    app.run(host=LISTEN_HOST, port=PORT, debug=False)
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=PORT, debug=True)
+    proc = multiprocessing.Process(target=run, args=())
+    proc.start()
+    # try:
+    #
+    # except:
+    #     traceback.print_exc()
+    # finally:
+    #     print("-------------end--------------")
+    #     gc.collect()
+    #     delMEI()
