@@ -51,7 +51,7 @@ def retrieval():
         id = ranked_idx[i]
         webpath = names[id]
         score = scores[id]
-        if(score<threshold and i>=min_res+1): break
+        if score<threshold and i>=int(min_res)+1: break
         relpath = relpath_from_webpath(webpath)
         im = {'id': relpath,
               'index': num,
