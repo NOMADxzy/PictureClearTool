@@ -1,4 +1,4 @@
-##master分支：
+##master分支：<br/>
 ####mac 系统下运行
 
 python = 3.7
@@ -14,6 +14,6 @@ python app.py
 解压到~/.EasyOCR/model下
 https://www.jaided.ai/easyocr/modelhub/
 
-##rpc分支
+##rpc分支<br/>
 pyinstaller打包
 调用rpc服务 https://gitee.com/xu_zuyun/piclear_prc_server.git
