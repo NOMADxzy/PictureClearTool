@@ -21,7 +21,8 @@ class ImageFeatures():
             featurestable = sqlite3.connect(database_file_path)
         except:
             print('-----重复初始化-----')
-            return 
+            return
+        #简化feature表
         cursor = featurestable.cursor()
         cursor.execute('select * from blur')
         results = cursor.fetchall()
@@ -35,6 +36,15 @@ class ImageFeatures():
                     # CachedBlurImg.append((webpath,fm))
                 self.names.append(webpath)
                 self.feats.append(json.loads(ft))
+
+        #简化detail表
+        cursor.execute('select * from detail')
+        results = cursor.fetchall()
+        if not results is None:
+            for webpath,detail in results:
+                if not relpath_from_webpath(webpath):  # 图片不存在，移除
+                    cursor.execute('delete from detail where webpath = ?', (webpath,))
+
         featurestable.commit()
         featurestable.close()
 

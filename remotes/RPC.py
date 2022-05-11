@@ -11,11 +11,10 @@ import remotes.image_procedure_pb2_grpc as image_procedure_pb2_grpc
 from pathlib import Path
 import numpy as np
 import base64
-import zlib
-import time
+from tools.val import RPC
 
 # open a gRPC channel
-channel = grpc.insecure_channel('127.0.0.1:5005')
+channel = grpc.insecure_channel(RPC)
 
 # create a stub (client)
 stub = image_procedure_pb2_grpc.ImageProcedureStub(channel)

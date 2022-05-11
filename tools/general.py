@@ -35,6 +35,11 @@ for key,value in result:
 PathDict = settings['PathDict']
 names = settings['names']
 
+for key in settings:#初始化settings
+    cursor.execute('select * from Settings where key = ?',(key,))
+    res = cursor.fetchone()
+    if res is None:
+        cursor.execute('insert into Settings values (?,?)',(key,json.dumps(settings[key])))
 
 settings_table.commit()
 settings_table.close()

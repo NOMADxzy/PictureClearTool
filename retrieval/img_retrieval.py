@@ -32,8 +32,9 @@ def retrieval():
     max_res = len(feats)
     min_res = 0
     if 'min' in request.json:
-        min_res = int(request.json['min'])#前端要求至少显示的结果数
+        min_res = request.json['min']#前端要求至少显示的结果数
         if min_res is None: min_res = settings['mincandicates']
+        else: min_res = request.json['min']
 
     threshold = settings['rela']
     print('img retrieval thres = ' + str(threshold))
