@@ -149,7 +149,7 @@ def add_tag():
         else:
             tagid = len(names)  # 新标签
             names.append(tag)
-            cursor.execute('update Settings set value = ? where key = ?', (pickle.dumps(names), 'names'))
+            cursor.execute('update Settings set value = ? where key = ?', (json.dumps(names), 'names'))
             #修改训练文件
             with open('./data/my_class_train100.yaml', 'w', encoding='utf8') as f:
                 info['names'] = names[cls_idx_base:]
