@@ -1,6 +1,7 @@
 import os,sqlite3
 from flask import Blueprint,request
 import numpy as np
+from PIL import Image
 
 from tools.general import relpath_from_webpath,thumbnail_from_webpath,get_tag,HOST,webpath_belongto_dir,\
     get_thumbnail_pic,get_img_detail,executor,settings,webpath_from_relpath
@@ -11,7 +12,7 @@ from remotes.RPC import extract_feat
 from detects.blur import imageFeatures
 
 # imageFeatures = ImageFeatures()
-names,feats = imageFeatures.names,imageFeatures.feats
+names,feats,cornerfeats = imageFeatures.names,imageFeatures.feats,imageFeatures.cornerfeats
 
 #检索图片相关的api在这里
 retrievalapp = Blueprint('img_retrieval',__name__)
@@ -40,8 +41,27 @@ def retrieval():
     print('img retrieval thres = ' + str(threshold))
     query = request.json['query']#目标图片的相对路径
     print('query img '+query +' min= '+str(min_res)+' thres = ' + str(threshold))
-    qvec = extract_feat(query)
-    scores = np.dot(qvec,np.asarray(feats).T)
+
+    if 'pos' in request.json:
+        print('search partitial')
+        img = Image.open(query)
+        box = request.json['pos']
+        size = img.size
+        w, h = size
+        box[0] = int(box[0] * w)
+        box[1] = int(box[1] * h)
+        box[2] = int(box[2] * w)
+        box[3] = int(box[3] * h)
+        print(box)
+        img = img.crop(box)
+        query = 'temp/query_crop.png'
+        img.save(query)
+        qvec = extract_feat(query)
+        scores = corner_retrieval(qvec)
+    else:
+        qvec = extract_feat(query)
+        scores = np.dot(qvec,np.asarray(feats).T)
+
     ranked_idx = np.argsort(scores)[::-1]
 
     candicates,num = [],0
@@ -69,6 +89,20 @@ def retrieval():
     # if(relpath_from_webpath(candicates[0][0])==query): candicates = candicates[1:]
     detect.close()
     return {'num':num,'candicates':candicates}
+
+def corner_retrieval(qvec):
+    cfeats = np.asarray(cornerfeats)
+    scores4 = []
+    for i in range(4):
+        scores = np.dot(qvec, np.asarray(cfeats[:,i]).T)
+        scores4.append(scores)
+    scores4.append(np.dot(qvec, np.asarray(feats).T))
+    scores4 = np.asarray(scores4)
+    newscores = []
+    for i in range(len(cfeats)):
+        max_score = np.max(scores4[:,i])
+        newscores.append(max_score)
+    return newscores
 
 
 #获取指定图片的清晰度

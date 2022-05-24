@@ -3,6 +3,7 @@ import json
 
 import numpy as np
 from imutils import paths
+from PIL import Image
 
 from tools.general import get_img_paths,PathDict,webpath_from_relpath,\
     settings,relpath_from_webpath,executor
@@ -16,6 +17,7 @@ class ImageFeatures():
         if noinit: return
         self.CachedBlurImg = []
         self.feats = []
+        self.cornerfeats = []
         self.names=[]
         try:
             featurestable = sqlite3.connect(database_file_path)
@@ -28,7 +30,7 @@ class ImageFeatures():
         results = cursor.fetchall()
         if not results is None:
             thres = settings['blur']
-            for webpath, fm,ft in results:
+            for webpath, fm,ft,ft_corners in results:
                 if not relpath_from_webpath(webpath):  # 图片不存在，移除
                     cursor.execute('delete from blur where webpath = ?', (webpath,))
                     cursor.execute('delete from detail where webpath = ?', (webpath,))
@@ -36,6 +38,7 @@ class ImageFeatures():
                     # CachedBlurImg.append((webpath,fm))
                 self.names.append(webpath)
                 self.feats.append(json.loads(ft))
+                self.cornerfeats.append(json.loads(ft_corners))
 
         #简化detail表
         cursor.execute('select * from detail')
@@ -97,7 +100,7 @@ class ImageFeatures():
             print('(blur) ' + webdir + ' 文件夹不存在')
             return 0
     
-        img_paths = get_img_paths(reldir,webpath=webdir)
+        img_paths = get_img_paths(reldir,webdir=webdir)
     
         # 遍历每一张图片
         for webpath in img_paths:
@@ -115,15 +118,31 @@ class ImageFeatures():
                 else:
                     fm = self.compute_laplace(imagePath)
 
-                ft = extract_feat(imagePath)
+                ft = extract_feat(imagePath)#提取总体特征
+
+                ft_corners = []
+                img = Image.open(imagePath)#提取corner特征
+                size = np.asarray(img.size)
+                mid = size / 2
+                poses = [(0, 0, mid[0], mid[1]), (0, mid[1], mid[0], size[1]),
+                         (mid[0], 0, size[0], mid[1]), (mid[0], mid[1], size[0], size[1])]
+                save_path = ['lt', 'rt', 'lb', 'rb']
+                for i, pos in enumerate(poses):
+                    imgc = img.crop(pos)
+                    crop_path = 'temp/' + save_path[i] + '.png'
+                    imgc.save(crop_path)
+                    ftc = extract_feat(crop_path)
+                    ft_corners.append(ftc)
+
                 self.names.append(webpath)
                 self.feats.append(ft)
+                self.cornerfeats.append(ft_corners)
                 print("(retrieval) extracting feature from image No. %d ," + imagePath + "; " )
     
-                cursor.execute('insert into blur values (?,?,?)', (webpath, fm,json.dumps(ft)))
+                cursor.execute('insert into blur values (?,?,?,?)', (webpath, fm,json.dumps(ft),json.dumps(ft_corners)))
     
             else:
-                webpath,fm,ft = result
+                webpath,fm,ft,ft_corners = result
             if fm < thres:
                 updated += 1
                 self.CachedBlurImg.append((webpath,fm))

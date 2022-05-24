@@ -108,14 +108,14 @@ def is_screen_shot(relpath):
     # general_resolution = [(1080,1920),(720,1280),(1080,2400)]
     return file[0:10].lower()=='screenshot' or '截图' in file
 
-def get_img_paths(dir,webpath=False):#由relpdir获取relpaths
+def get_img_paths(dir,webdir=False):#由relpdir获取relpaths
     imglist = []
     for root, dirs, files in os.walk(dir):
         dirs[:] = []
         for file in files:
             if (not is_allowed_ext(file)): continue
-            if(webpath):
-                imglist.append(webpath+'/'+file)
+            if(webdir):
+                imglist.append(webdir+'/'+file)
             else:
                 imglist.append(root+'/'+file)
     return imglist
@@ -197,7 +197,10 @@ def get_img_detail(webpath,cursor):
 
     # resolution = str(img.size[0]) + 'x' + str(img.size[1])
     detail = [size,date_and_time[0], img.size,date_and_time[1]]
-    cursor.execute('insert into detail values (?,?)',(webpath,pickle.dumps(detail)))
+    try:
+        cursor.execute('insert into detail values (?,?)', (webpath, pickle.dumps(detail)))
+    except:
+        print('database locked (get_detail)')
     return detail
 
 
